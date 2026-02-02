@@ -67,9 +67,16 @@ def _load_ai_from_secrets() -> AITutor:
     try:
         ai_conf = st.secrets.get("ai", {})
         if ai_conf and ai_conf.get("api_key"):
+            model = ai_conf.get("model", "doubao-seed-1-6-251015")
+            base_url = ai_conf.get("base_url", None)
+            
+            # Auto-fix Base URL for Coding Plan if user configures it wrong
+            if model == "ark-code-latest" and base_url and "/coding" not in base_url:
+                base_url = "https://ark.cn-beijing.volces.com/api/coding/v3"
+            
             config = TutorConfig(
-                model=ai_conf.get("model", "doubao-seed-1-6-251015"),
-                base_url=ai_conf.get("base_url", None),
+                model=model,
+                base_url=base_url,
             )
             return AITutor(config=config, api_key=ai_conf["api_key"])
     except Exception:
@@ -745,6 +752,15 @@ def render_settings():
     # AI Config
     st.subheader("🤖 AI 配置")
 
+    # CI/Secrets Status
+    if st.secrets.get("ai", {}).get("api_key"):
+        with st.expander("🔐 已检测到 Cloud Secrets 配置", expanded=True):
+            s_model = st.secrets.get("ai", {}).get("model", "Unknown")
+            s_base = st.secrets.get("ai", {}).get("base_url", "Unknown")
+            st.success(f"已加载 Secrets 配置 (模型: `{s_model}`)")
+            if s_model == "ark-code-latest" and "/coding" not in s_base:
+                st.warning("⚠️ 检测到 Secrets 中的 Base URL 可能不匹配 Coding Plan。系统已自动为您修正。")
+
     # Provider presets
     provider = st.selectbox(
         "选择 AI 服务商",
@@ -867,6 +883,12 @@ def render_settings():
             model=model_name,
             base_url=base_url if base_url else None,
         )
+        
+        # Runtime correction for manual entry
+        if config.model == "ark-code-latest" and config.base_url and "/coding" not in config.base_url:
+             config.base_url = "https://ark.cn-beijing.volces.com/api/coding/v3"
+             st.info("💡 已自动将 API 地址修正为 Coding Plan 专用地址。")
+
         st.session_state.tutor = AITutor(config=config, api_key=api_key)
         
         # Save to DB for persistence

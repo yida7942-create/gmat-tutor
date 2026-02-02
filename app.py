@@ -33,6 +33,8 @@ def check_password():
     """Returns `True` if the user had the correct password."""
     # 1. If no password is set in secrets, allow access (for local dev convenience)
     if "password" not in st.secrets:
+        # Debugging: Show connected secrets keys (safely)
+        st.warning(f"⚠️ 未检测到密码配置。当前读取到的 Secrets Keys: {list(st.secrets.keys())}")
         return True
 
     def password_entered():

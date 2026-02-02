@@ -825,7 +825,7 @@ def render_settings():
         api_key = st.text_input(
             "API Key",
             type="password",
-            value=st.session_state.get('api_key', ''),
+            key="api_key",
             help="在服务商控制台获取"
         )
     with col2:
@@ -843,7 +843,7 @@ def render_settings():
     if provider == "自定义":
         base_url = st.text_input(
             "API Base URL",
-            value=st.session_state.get('base_url', ''),
+            key="base_url",
             help="填写服务商的 API 地址"
         )
     else:

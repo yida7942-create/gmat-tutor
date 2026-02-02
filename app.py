@@ -11,10 +11,12 @@ import os
 from typing import Optional
 from typing import Optional
 from dataclasses import asdict
+from concurrent.futures import ThreadPoolExecutor
 
 from database import get_db, Question, StudyLog, DatabaseManager
 from scheduler import Scheduler, DailyPlan, SchedulerConfig
 from tutor import AITutor, TutorConfig, get_error_taxonomy
+from gist_sync import get_gist_client
 
 # ============== Page Config ==============
 
@@ -110,7 +112,8 @@ def init_session_state():
         'question_start_time': None,
         'show_result': False,
         'last_answer': None,
-        'page': '🏠 Dashboard',  # Track current page
+        'page': '🏠 Dashboard',
+        'ai_executor': ThreadPoolExecutor(max_workers=2),
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -529,7 +532,75 @@ def render_result_view(question: Question):
 
     st.markdown("---")
 
-    # Error tagging (wrong answers only)
+    # --- Content Generation (Eager Load) ---
+    # Trigger futures if not cached/running
+    
+    # 1. AI Explanation Future
+    exp_cache_key = f"ai_exp_{question.id}_{result['user_answer']}"
+    exp_future_key = f"future_exp_{question.id}_{result['user_answer']}"
+    
+    if exp_cache_key not in st.session_state and exp_future_key not in st.session_state:
+        # Submit task
+        future = st.session_state.ai_executor.submit(
+            st.session_state.tutor.explain_failure,
+            question, 
+            result['user_answer'], 
+            result['is_correct']
+        )
+        st.session_state[exp_future_key] = future
+
+    # 2. Translation Future
+    trans_cache_key = f"ai_trans_{question.id}"
+    trans_future_key = f"future_trans_{question.id}"
+    
+    if trans_cache_key not in st.session_state and trans_future_key not in st.session_state:
+        # Submit task
+        future = st.session_state.ai_executor.submit(
+            st.session_state.tutor.translate_question,
+            question
+        )
+        st.session_state[trans_future_key] = future
+
+    # --- Display Sections ---
+
+    # 2. AI Explanation
+    with st.expander("🤖 AI 讲解", expanded=True):
+        if exp_cache_key in st.session_state:
+             st.markdown(st.session_state[exp_cache_key])
+        elif exp_future_key in st.session_state:
+            # Check status
+            f = st.session_state[exp_future_key]
+            if f.done():
+                try:
+                    res = f.result()
+                    st.session_state[exp_cache_key] = res
+                    del st.session_state[exp_future_key] # Cleanup future
+                    st.markdown(res)
+                    st.rerun() # Rerun to refresh state mostly for cleaner look, but maybe optional
+                except Exception as e:
+                    st.error(f"生成失败: {e}")
+            else:
+                st.info("🤖 AI 正在分析题目... (后台生成中)")
+        else:
+            st.error("任务启动失败")
+
+    # 3. Translation
+    with st.expander("🌐 中文翻译", expanded=False):
+        if trans_cache_key in st.session_state:
+             st.markdown(st.session_state[trans_cache_key])
+        elif trans_future_key in st.session_state:
+             f = st.session_state[trans_future_key]
+             if f.done():
+                res = f.result()
+                st.session_state[trans_cache_key] = res
+                del st.session_state[trans_future_key]
+                st.markdown(res)
+             else:
+                st.info("🌐 正在生成翻译... (后台生成中)")
+
+    st.markdown("---")
+    
+    # Error tagging (moved to bottom)
     error_category = None
     error_detail = None
 
@@ -556,43 +627,7 @@ def render_result_view(question: Question):
             )
 
         st.caption(f"💡 **改进建议:** {error_taxonomy[error_category]['remedy']}")
-
-    st.markdown("---")
-
-    # Explanation section
-    # 1. Always show OG book explanation if available
-    og_exp = question.explanation or ""
-    has_og_explanation = og_exp.strip() and not og_exp.strip().startswith("OG Type:")
-    if has_og_explanation:
-        with st.expander("📖 OG 原书解析", expanded=False):
-            st.markdown(og_exp)
-
-    # 2. AI explanation (cached to avoid re-calling on rerender)
-    cache_key = f"ai_exp_{question.id}_{result['user_answer']}"
-    if cache_key not in st.session_state:
-        with st.expander("🤖 AI 讲解", expanded=True):
-            with st.spinner("生成讲解..."):
-                explanation = st.session_state.tutor.explain_failure(
-                    question, result['user_answer'], is_correct=result['is_correct']
-                )
-                st.session_state[cache_key] = explanation
-            st.markdown(explanation)
-    else:
-        with st.expander("🤖 AI 讲解", expanded=True):
-            st.markdown(st.session_state[cache_key])
-
-    # 3. Translation (New feature - Auto Load)
-    trans_key = f"ai_trans_{question.id}"
-    # Auto-generate if not cached
-    if trans_key not in st.session_state:
-        with st.expander("🌐 中文翻译", expanded=False):
-            with st.spinner("正在生成中文翻译..."):
-                trans_text = st.session_state.tutor.translate_question(question)
-                st.session_state[trans_key] = trans_text
-            st.markdown(trans_text)
-    else:
-        with st.expander("🌐 中文翻译", expanded=False):
-            st.markdown(st.session_state[trans_key])
+        st.markdown("---")
 
     # Next button
     col1, col2, col3 = st.columns([1, 2, 1])

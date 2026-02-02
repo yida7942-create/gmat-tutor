@@ -90,27 +90,27 @@ One actionable takeaway sentence. Format: "遇到[题型/情境]，注意[具体
 Keep the total response under 500 words. Be direct and specific — avoid generic advice. Use the student's actual wrong choice as the teaching anchor. 请用中文回答（词汇翻译部分保留英文原词）。"""
 
 
-SUMMARY_PROMPT_TEMPLATE = """Based on today's study session, provide a brief summary and recommendations.
+SUMMARY_PROMPT_TEMPLATE = """基于今天的学习记录，请生成一份简要的中文学习总结和建议。
 
-**Session Statistics:**
-- Questions attempted: {total_questions}
-- Correct answers: {correct_count}
-- Accuracy: {accuracy}%
-- Average time per question: {avg_time} seconds
+**学习数据:**
+- 完成题目: {total_questions}
+- 正确数量: {correct_count}
+- 正确率: {accuracy}%
+- 平均用时: {avg_time} 秒/题
 
-**Errors by Category:**
+**错误类型分布:**
 {error_breakdown}
 
-**Weakest Tags:**
+**薄弱考点:**
 {weak_tags}
 
-Please provide:
-1. A brief assessment of today's performance (2-3 sentences)
-2. What went well
-3. Key areas needing improvement
-4. Specific recommendation for tomorrow's practice
+请输出以下内容（全部用中文）:
+1. **今日点评**: 对今天表现的简要评估 (2-3句话)
+2. **亮点**: 表现好的地方
+3. **提升空间**: 需要重点改进的领域
+4. **明日建议**: 对接下来练习的具体建议
 
-Keep it encouraging but honest. Be concise."""
+语气要积极鼓励但实事求是。保持简洁扼要。"""
 
 
 QUICK_TIP_PROMPT_TEMPLATE = """For a GMAT {question_type} question testing "{skill_tag}", give ONE quick tip (2-3 sentences max) that helps identify the correct answer pattern."""

@@ -12,7 +12,7 @@ from typing import Optional
 
 from database import get_db, Question, StudyLog, DatabaseManager
 from scheduler import Scheduler, DailyPlan, SchedulerConfig
-from tutor import AITutor, TutorConfig, get_error_taxonomy, translate_question
+from tutor import AITutor, TutorConfig, get_error_taxonomy
 
 # ============== Page Config ==============
 
@@ -61,7 +61,8 @@ if 'db_initialized' not in st.session_state:
 # ============== Session State Init ==============
 
 def _load_ai_from_secrets() -> AITutor:
-    """Try to load AI config from Streamlit secrets (for Cloud deployment)."""
+    """Try to load AI config from Streamlit secrets OR database."""
+    # 1. Try Secrets (Priority for Cloud)
     try:
         ai_conf = st.secrets.get("ai", {})
         if ai_conf and ai_conf.get("api_key"):
@@ -72,6 +73,19 @@ def _load_ai_from_secrets() -> AITutor:
             return AITutor(config=config, api_key=ai_conf["api_key"])
     except Exception:
         pass
+
+    # 2. Try Database (Priority for Local / Session persistence)
+    try:
+        db = get_db()
+        api_key = db.load_session('api_key')
+        if api_key:
+            model = db.load_session('model_name') or "doubao-seed-1-6-251015"
+            base_url = db.load_session('base_url')
+            config = TutorConfig(model=model, base_url=base_url)
+            return AITutor(config=config, api_key=api_key)
+    except Exception:
+        pass
+
     return AITutor()
 
 
@@ -88,8 +102,6 @@ def init_session_state():
         'show_result': False,
         'last_answer': None,
         'page': '🏠 Dashboard',  # Track current page
-        'answered_questions': {},  # Store answered question data: {idx: {answer, is_correct, time_taken}}
-        'viewing_history': False,  # Flag for viewing previous questions
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -214,8 +226,6 @@ def render_dashboard():
                 st.session_state.show_result = False
                 st.session_state.last_answer = None
                 st.session_state.question_start_time = None
-                st.session_state.answered_questions = {}  # Clear history for new session
-                st.session_state.viewing_history = False
                 st.session_state.scheduler.reset_session()
                 # Persist plan to DB for refresh recovery
                 _save_practice_state(plan, 0)
@@ -275,10 +285,27 @@ def render_dashboard():
 def _save_practice_state(plan, question_idx: int):
     """Save current practice state to DB for refresh recovery."""
     db = st.session_state.db
+    
+    # Serialize complex objects
+    # StudyLogs need to be serialized to dicts
+    logs_data = [asdict(log) for log in st.session_state.session_logs] if st.session_state.session_logs else []
+    
+    # Last answer needs to be serialized (question object inside it needs handling)
+    last_answer_data = None
+    if st.session_state.last_answer:
+        la = st.session_state.last_answer.copy()
+        if 'question' in la:
+            la['question_id'] = la['question'].id
+            del la['question'] # Don't save the full object, just ID
+        last_answer_data = la
+
     state = {
         'question_ids': [q.id for q in plan.questions],
         'question_idx': question_idx,
         'started_at': datetime.now().isoformat(),
+        'show_result': st.session_state.show_result,
+        'last_answer': last_answer_data,
+        'session_logs': logs_data
     }
     db.save_session('practice_state', json.dumps(state))
     db.save_session('practice_page', '📝 Practice')
@@ -321,10 +348,28 @@ def _restore_practice_state() -> bool:
         )
         st.session_state.current_plan = plan
         st.session_state.current_question_idx = question_idx
-        st.session_state.session_logs = []
-        st.session_state.show_result = False
-        st.session_state.last_answer = None
-        st.session_state.question_start_time = None
+        
+        # Restore extended state
+        st.session_state.show_result = state.get('show_result', False)
+        
+        # Restore logs
+        logs_raw = state.get('session_logs', [])
+        st.session_state.session_logs = [StudyLog(**log) for log in logs_raw]
+        
+        # Restore last answer
+        la_raw = state.get('last_answer')
+        if la_raw:
+            # Rehydrate question object if needed
+            qid = la_raw.get('question_id')
+            if qid:
+                # Find the question object in our plan
+                q_obj = next((q for q in questions if q.id == qid), None)
+                la_raw['question'] = q_obj
+            st.session_state.last_answer = la_raw
+        else:
+            st.session_state.last_answer = None
+
+        st.session_state.question_start_time = None # Reset timer on refresh to avoid huge times
         st.session_state.page = '📝 Practice'
         return True
     except Exception:
@@ -386,8 +431,6 @@ def render_practice():
                     st.session_state.show_result = False
                     st.session_state.last_answer = None
                     st.session_state.question_start_time = None
-                    st.session_state.answered_questions = {}  # Clear history for new session
-                    st.session_state.viewing_history = False
                     st.session_state.scheduler.reset_session()
                     _save_practice_state(new_plan, 0)
                     st.rerun()
@@ -406,51 +449,7 @@ def render_practice():
     # Progress bar
     progress_val = st.session_state.current_question_idx / len(plan.questions)
     st.progress(progress_val)
-
-    # Question navigation strip
-    current_idx = st.session_state.current_question_idx
-    answered = st.session_state.answered_questions
-    total = len(plan.questions)
-
-    # Create a row of small buttons for navigation
-    if answered:  # Only show if there are answered questions
-        st.caption(f"第 {current_idx + 1} / {total} 题 — 点击数字可跳转回看已做题目")
-        cols = st.columns(min(total, 15))  # Max 15 buttons per row
-        for i in range(min(total, 15)):
-            with cols[i]:
-                if i in answered:
-                    # Answered question - show result color
-                    is_correct = answered[i]['is_correct']
-                    btn_label = f"{'✓' if is_correct else '✗'}{i+1}"
-                    btn_type = "primary" if i == current_idx else "secondary"
-                    if st.button(btn_label, key=f"nav_{i}", use_container_width=True,
-                                type=btn_type, help=f"题目 {i+1} - {'正确' if is_correct else '错误'}"):
-                        if i != current_idx:
-                            st.session_state.viewing_history = True
-                            st.session_state.current_question_idx = i
-                            prev_data = answered[i]
-                            prev_q = plan.questions[i]
-                            st.session_state.last_answer = {
-                                'user_answer': prev_data['user_answer'],
-                                'is_correct': prev_data['is_correct'],
-                                'time_taken': prev_data['time_taken'],
-                                'question': prev_q
-                            }
-                            st.session_state.show_result = True
-                            st.rerun()
-                elif i == current_idx:
-                    # Current unanswered question
-                    st.button(f"→{i+1}", key=f"nav_{i}", use_container_width=True,
-                             type="primary", disabled=True)
-                else:
-                    # Future question - disabled
-                    st.button(f"{i+1}", key=f"nav_{i}", use_container_width=True, disabled=True)
-
-        # Show more rows if needed
-        if total > 15:
-            st.caption(f"... 共 {total} 题")
-    else:
-        st.caption(f"第 {current_idx + 1} / {total} 题")
+    st.caption(f"第 {st.session_state.current_question_idx + 1} / {len(plan.questions)} 题")
 
     # Start timer
     if st.session_state.question_start_time is None:
@@ -502,16 +501,6 @@ def render_result_view(question: Question):
     """Render the result after answering."""
     result = st.session_state.last_answer
     letters = ['A', 'B', 'C', 'D', 'E']
-    current_idx = st.session_state.current_question_idx
-
-    # Save to answered_questions for history navigation
-    if current_idx not in st.session_state.answered_questions:
-        st.session_state.answered_questions[current_idx] = {
-            'user_answer': result['user_answer'],
-            'is_correct': result['is_correct'],
-            'time_taken': result['time_taken'],
-            'question_id': question.id
-        }
 
     # Result
     if result['is_correct']:
@@ -547,14 +536,14 @@ def render_result_view(question: Question):
                 "错误大类",
                 list(error_taxonomy.keys()),
                 format_func=lambda x: f"{x} - {error_taxonomy[x]['description'][:15]}...",
-                key=f"err_cat_{current_idx}"
+                key=f"err_cat_{st.session_state.current_question_idx}"
             )
         with col2:
             error_types = error_taxonomy[error_category]['types']
             error_detail = st.selectbox(
                 "具体原因",
                 list(error_types.keys()),
-                key=f"err_det_{current_idx}"
+                key=f"err_det_{st.session_state.current_question_idx}"
             )
 
         st.caption(f"💡 **改进建议:** {error_taxonomy[error_category]['remedy']}")
@@ -562,25 +551,14 @@ def render_result_view(question: Question):
     st.markdown("---")
 
     # Explanation section
-    # 1. Translation with key vocabulary (NEW)
-    trans_cache_key = f"trans_{question.id}"
-    with st.expander("🔤 题目翻译 & 重点词汇", expanded=False):
-        if trans_cache_key not in st.session_state:
-            with st.spinner("生成翻译..."):
-                translation = st.session_state.tutor.translate_question(question)
-                st.session_state[trans_cache_key] = translation
-            st.markdown(st.session_state[trans_cache_key])
-        else:
-            st.markdown(st.session_state[trans_cache_key])
-
-    # 2. Always show OG book explanation if available
+    # 1. Always show OG book explanation if available
     og_exp = question.explanation or ""
     has_og_explanation = og_exp.strip() and not og_exp.strip().startswith("OG Type:")
     if has_og_explanation:
         with st.expander("📖 OG 原书解析", expanded=False):
             st.markdown(og_exp)
 
-    # 3. AI explanation (cached to avoid re-calling on rerender)
+    # 2. AI explanation (cached to avoid re-calling on rerender)
     cache_key = f"ai_exp_{question.id}_{result['user_answer']}"
     if cache_key not in st.session_state:
         with st.expander("🤖 AI 讲解", expanded=True):
@@ -594,133 +572,46 @@ def render_result_view(question: Question):
         with st.expander("🤖 AI 讲解", expanded=True):
             st.markdown(st.session_state[cache_key])
 
-    st.markdown("---")
-
-    # Navigation buttons: Previous / Next
-    plan = st.session_state.current_plan
-    total_questions = len(plan.questions) if plan else 0
-    can_go_prev = current_idx > 0 and current_idx - 1 in st.session_state.answered_questions
-    can_go_next = True  # Always can go to next (or finish)
-
+    # Next button
     col1, col2, col3 = st.columns([1, 2, 1])
-
-    with col1:
-        if can_go_prev:
-            if st.button("← 上一题", use_container_width=True, key=f"prev_{current_idx}"):
-                # Save current log first if not viewing history
-                if not st.session_state.get('viewing_history', False):
-                    _save_current_log(question, result, error_category, error_detail)
-
-                # Go to previous question in history view mode
-                st.session_state.viewing_history = True
-                st.session_state.current_question_idx = current_idx - 1
-                prev_data = st.session_state.answered_questions[current_idx - 1]
-                prev_q = plan.questions[current_idx - 1]
-                st.session_state.last_answer = {
-                    'user_answer': prev_data['user_answer'],
-                    'is_correct': prev_data['is_correct'],
-                    'time_taken': prev_data['time_taken'],
-                    'question': prev_q
-                }
-                st.session_state.show_result = True
-                st.rerun()
-
     with col2:
-        # Determine if this is the furthest question or history view
-        furthest_idx = max(st.session_state.answered_questions.keys()) if st.session_state.answered_questions else 0
+        if st.button("下一题 →", type="primary", use_container_width=True,
+                      key=f"next_{st.session_state.current_question_idx}"):
+            # Save study log
+            log = StudyLog(
+                id=None,
+                question_id=question.id,
+                user_answer=result['user_answer'],
+                is_correct=result['is_correct'],
+                time_taken=result['time_taken'],
+                error_category=error_category,
+                error_detail=error_detail,
+                timestamp=datetime.now().isoformat()
+            )
+            st.session_state.db.add_study_log(log)
+            st.session_state.session_logs.append(log)
 
-        if st.session_state.get('viewing_history', False) and current_idx < furthest_idx:
-            # In history view, show "Next" to go forward in history
-            if st.button("下一题 →", type="secondary", use_container_width=True, key=f"next_hist_{current_idx}"):
-                st.session_state.current_question_idx = current_idx + 1
-                next_data = st.session_state.answered_questions[current_idx + 1]
-                next_q = plan.questions[current_idx + 1]
-                st.session_state.last_answer = {
-                    'user_answer': next_data['user_answer'],
-                    'is_correct': next_data['is_correct'],
-                    'time_taken': next_data['time_taken'],
-                    'question': next_q
-                }
-                st.session_state.show_result = True
-                st.rerun()
-        elif st.session_state.get('viewing_history', False) and current_idx == furthest_idx:
-            # At the furthest answered question, option to continue
-            if current_idx + 1 < total_questions:
-                if st.button("继续做题 →", type="primary", use_container_width=True, key=f"continue_{current_idx}"):
-                    st.session_state.viewing_history = False
-                    st.session_state.current_question_idx = current_idx + 1
-                    st.session_state.show_result = False
-                    st.session_state.question_start_time = None
-                    st.session_state.last_answer = None
-                    _save_practice_state(plan, current_idx + 1)
-                    st.rerun()
+            # Check emergency drill
+            drill = st.session_state.scheduler.record_answer(
+                question, result['is_correct']
+            )
+            if drill:
+                st.toast(f"⚠️ 连续错误检测: {drill.tag}，建议专项训练", icon="⚠️")
+
+            # Advance
+            st.session_state.current_question_idx += 1
+            st.session_state.show_result = False
+            st.session_state.question_start_time = None
+            st.session_state.last_answer = None
+            
+            # Persist progress to DB
+            current_plan = st.session_state.current_plan
+            if current_plan and st.session_state.current_question_idx < len(current_plan.questions):
+                _save_practice_state(current_plan, st.session_state.current_question_idx)
             else:
-                if st.button("查看总结 →", type="primary", use_container_width=True, key=f"summary_{current_idx}"):
-                    st.session_state.viewing_history = False
-                    st.session_state.current_question_idx = current_idx + 1
-                    _clear_practice_state()
-                    st.rerun()
-        else:
-            # Normal flow - answering new question
-            if st.button("下一题 →", type="primary", use_container_width=True, key=f"next_{current_idx}"):
-                # Save study log
-                _save_current_log(question, result, error_category, error_detail)
-
-                # Check emergency drill
-                drill = st.session_state.scheduler.record_answer(
-                    question, result['is_correct']
-                )
-                if drill:
-                    st.toast(f"⚠️ 连续错误检测: {drill.tag}，建议专项训练", icon="⚠️")
-
-                # Advance
-                st.session_state.current_question_idx += 1
-                st.session_state.show_result = False
-                st.session_state.question_start_time = None
-                st.session_state.last_answer = None
-
-                # Persist progress to DB
-                if plan and st.session_state.current_question_idx < len(plan.questions):
-                    _save_practice_state(plan, st.session_state.current_question_idx)
-                else:
-                    _clear_practice_state()
-
-                st.rerun()
-
-    with col3:
-        # Quick jump to continue if viewing history
-        if st.session_state.get('viewing_history', False) and current_idx < furthest_idx:
-            if furthest_idx + 1 < total_questions:
-                if st.button("跳到最新 ⏭️", use_container_width=True, key=f"jump_{current_idx}"):
-                    st.session_state.viewing_history = False
-                    st.session_state.current_question_idx = furthest_idx + 1
-                    st.session_state.show_result = False
-                    st.session_state.question_start_time = None
-                    st.session_state.last_answer = None
-                    _save_practice_state(plan, furthest_idx + 1)
-                    st.rerun()
-
-
-def _save_current_log(question: Question, result: dict, error_category: str, error_detail: str):
-    """Helper to save study log for current question."""
-    # Check if already saved
-    log_key = f"log_saved_{question.id}_{st.session_state.current_question_idx}"
-    if log_key in st.session_state:
-        return
-
-    log = StudyLog(
-        id=None,
-        question_id=question.id,
-        user_answer=result['user_answer'],
-        is_correct=result['is_correct'],
-        time_taken=result['time_taken'],
-        error_category=error_category,
-        error_detail=error_detail,
-        timestamp=datetime.now().isoformat()
-    )
-    st.session_state.db.add_study_log(log)
-    st.session_state.session_logs.append(log)
-    st.session_state[log_key] = True
+                _clear_practice_state()
+            
+            st.rerun()
 
 
 def render_session_summary():
@@ -763,8 +654,6 @@ def render_session_summary():
     with col1:
         if st.button("📊 查看进度", use_container_width=True):
             st.session_state.current_plan = None
-            st.session_state.answered_questions = {}
-            st.session_state.viewing_history = False
             _clear_practice_state()
             st.session_state.page = '📊 Progress'
             st.rerun()
@@ -773,8 +662,6 @@ def render_session_summary():
             st.session_state.current_plan = None
             st.session_state.current_question_idx = 0
             st.session_state.session_logs = []
-            st.session_state.answered_questions = {}
-            st.session_state.viewing_history = False
             _clear_practice_state()
             st.session_state.page = '🏠 Dashboard'
             st.rerun()
@@ -959,6 +846,17 @@ def render_settings():
             base_url=base_url if base_url else None,
         )
         st.session_state.tutor = AITutor(config=config, api_key=api_key)
+        
+        # Save to DB for persistence
+        try:
+            db = get_db()
+            db.save_session('api_key', api_key)
+            db.save_session('model_name', model_name)
+            if base_url:
+                db.save_session('base_url', base_url)
+            st.success("配置已保存！(设置已存入本地数据库，刷新页面不会丢失)")
+        except Exception as e:
+            st.warning(f"配置已生效，但保存到数据库失败: {e}")
 
         if st.session_state.tutor.is_available():
             with st.spinner("测试连接中..."):

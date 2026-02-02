@@ -805,6 +805,17 @@ def render_settings():
     }
 
     preset = provider_presets[provider]
+    
+    # Auto-update model name if provider changes (and model_name is not set or matches old default)
+    # We use a state tracking variable to detect provider switch
+    if 'last_provider' not in st.session_state:
+        st.session_state.last_provider = provider
+    
+    if st.session_state.last_provider != provider:
+        st.session_state.model_name = preset['default_model']
+        st.session_state.base_url = preset['base_url']
+        st.session_state.last_provider = provider
+        st.rerun()
 
     # Show help text
     st.info(preset['help_text'])
@@ -820,9 +831,13 @@ def render_settings():
     with col2:
         model_name = st.text_input(
             "模型名称",
-            value=st.session_state.get('model_name', preset['default_model']),
+            key="model_name", # bind to session state
             help=preset['model_hint']
         )
+    
+    # Ensure base_url is synced with state for display
+    if 'base_url' not in st.session_state:
+        st.session_state.base_url = preset['base_url']
 
     # Only show base_url for custom provider
     if provider == "自定义":
@@ -837,9 +852,15 @@ def render_settings():
             st.caption(f"📡 API 地址: `{base_url}`")
 
     if st.button("保存并测试连接", type="primary"):
-        st.session_state.api_key = api_key
-        st.session_state.model_name = model_name
-        st.session_state.base_url = base_url
+        # Values are already in st.session_state due to widget keys
+        # st.session_state.api_key = api_key 
+        # st.session_state.model_name = model_name
+        # st.session_state.base_url = base_url
+        
+        # Explicitly get latest from state
+        api_key = st.session_state.api_key
+        model_name = st.session_state.model_name
+        base_url = st.session_state.get('base_url', '')
 
         config = TutorConfig(
             model=model_name,

@@ -472,6 +472,21 @@ def render_practice():
     st.caption(f"**{type_label}** | **考点:** {tags_str} | **难度:** {'⭐' * current_q.difficulty}")
 
     # Question content
+    
+    # Smart Feature: Boldface Recovery
+    # Check if it's a Boldface question but missing markdown formatting
+    if "boldface" in current_q.content.lower() and "**" not in current_q.content and "<b>" not in current_q.content:
+        st.warning("⚠️ 检测到本题为 Boldface 题型，但题干缺失黑体标记。")
+        if st.button("🛠️ AI 自动修复黑体 (Smart Fix)", key=f"fix_bf_{current_q.id}"):
+            with st.spinner("AI 正在根据逻辑复原黑体部分..."):
+                fixed = st.session_state.tutor.recover_boldface(current_q.content)
+                if "**" in fixed:
+                    current_q.content = fixed
+                    st.success("✅ 修复成功！")
+                    st.rerun()
+                else:
+                    st.error("修复失败，AI 未能识别黑体位置。")
+
     st.markdown(current_q.content)
     st.markdown("---")
 

@@ -153,6 +153,14 @@ Select the 1-2 most grammatically complex or critical sentences from the text.
    - **精译**: [Polished Translation]
 """
 
+BOLDFACE_RECOVERY_PROMPT = """The following GMAT Critical Reasoning argument should have boldface portions, but the formatting is lost.
+
+**Content:**
+{content}
+
+Please identify the logical boldface portions based on GMAT CR patterns (usually one is a premise/context/counter-position, and the other is the conclusion/main point/evidence).
+**Task:** Return the *exact* original text, but wrap the two boldface portions in markdown double asterisks (**like this**). Ensure you do not change any words, only add the bolding."""
+
 
 # ============== AI Tutor ==============
 
@@ -260,13 +268,13 @@ class AITutor:
         
         return explanation
     
-    
     def translate_question(self, question: Question) -> str:
         """Translate question content to Chinese."""
         if not self._get_client():
             return "⚠️ AI 未连接，请配置 API Key 后使用翻译功能。"
 
         try:
+            # Use bilingual prompt
             prompt = TRANSLATION_PROMPT_TEMPLATE.format(
                 question_content=question.content,
                 option_a=question.options[0],
@@ -283,11 +291,31 @@ class AITutor:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3, 
-                max_tokens=1500
+                max_tokens=2000
             )
             return response.choices[0].message.content
         except Exception as e:
             return f"翻译生成失败: {e}"
+
+    def recover_boldface(self, content: str) -> str:
+        """Recover missing boldface formatting from CR questions."""
+        if not self._get_client():
+            return content  # Fail silent or return original
+
+        try:
+            prompt = BOLDFACE_RECOVERY_PROMPT.format(content=content)
+            response = self._get_client().chat.completions.create(
+                model=self.config.model,
+                messages=[
+                    {"role": "system", "content": "You are a helper that restores missing formatting. Return ONLY the text."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=1000
+            )
+            return response.choices[0].message.content
+        except Exception:
+            return content
 
     def generate_session_summary(self,
                                 logs: List[StudyLog],

@@ -600,6 +600,13 @@ def render_result_view(question: Question):
 
     # --- Display Sections ---
 
+    # 1. OG Explanation (restored)
+    og_exp = question.explanation or ""
+    has_og_explanation = og_exp.strip() and not og_exp.strip().startswith("OG Type:")
+    if has_og_explanation:
+        with st.expander("📖 OG 原书解析", expanded=False):
+            st.markdown(og_exp)
+
     # 2. AI Explanation
     with st.expander("🤖 AI 讲解", expanded=True):
         if exp_cache_key in st.session_state:

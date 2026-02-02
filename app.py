@@ -9,6 +9,7 @@ import time
 import json
 import os
 from typing import Optional
+from dataclasses import asdict
 
 from database import get_db, Question, StudyLog, DatabaseManager
 from scheduler import Scheduler, DailyPlan, SchedulerConfig

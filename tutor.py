@@ -153,8 +153,7 @@ Select the 1-2 most grammatically complex or critical sentences from the text.
    - **精译**: [Polished Translation]
 """
 
-   - **精译**: [Polished Translation]
-"""
+
 
 
 # ============== AI Tutor ==============

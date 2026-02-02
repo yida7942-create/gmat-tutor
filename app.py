@@ -612,19 +612,16 @@ def render_result_view(question: Question):
         if exp_cache_key in st.session_state:
              st.markdown(st.session_state[exp_cache_key])
         elif exp_future_key in st.session_state:
-            # Check status
+            # Wait for result
             f = st.session_state[exp_future_key]
-            if f.done():
-                try:
-                    res = f.result()
-                    st.session_state[exp_cache_key] = res
-                    del st.session_state[exp_future_key] # Cleanup future
-                    st.markdown(res)
-                    st.rerun() # Rerun to refresh state mostly for cleaner look, but maybe optional
-                except Exception as e:
-                    st.error(f"生成失败: {e}")
-            else:
-                st.info("🤖 AI 正在分析题目... (后台生成中)")
+            try:
+                with st.spinner("🤖 AI 正在分析题目..."):
+                    res = f.result()  # This blocks until ready
+                st.session_state[exp_cache_key] = res
+                del st.session_state[exp_future_key]
+                st.markdown(res)
+            except Exception as e:
+                st.error(f"生成失败: {e}")
         else:
             st.error("任务启动失败")
 
@@ -634,13 +631,14 @@ def render_result_view(question: Question):
              st.markdown(st.session_state[trans_cache_key])
         elif trans_future_key in st.session_state:
              f = st.session_state[trans_future_key]
-             if f.done():
-                res = f.result()
+             try:
+                with st.spinner("🌐 正在生成翻译..."):
+                    res = f.result()
                 st.session_state[trans_cache_key] = res
                 del st.session_state[trans_future_key]
                 st.markdown(res)
-             else:
-                st.info("🌐 正在生成翻译... (后台生成中)")
+             except Exception as e:
+                 st.error(f"翻译失败: {e}")
 
     st.markdown("---")
     

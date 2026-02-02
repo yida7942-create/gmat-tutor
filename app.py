@@ -10,9 +10,13 @@ import json
 import os
 from typing import Optional
 <<<<<<< HEAD
+<<<<<<< HEAD
 from dataclasses import asdict
 =======
 >>>>>>> 4b25004 (Fix: Add persistence, improve UX, and fix crash in settings)
+=======
+from dataclasses import asdict
+>>>>>>> 21e1c8e (Fix: Add missing asdict import for state persistence and duplicate format in prompts)
 
 from database import get_db, Question, StudyLog, DatabaseManager
 from scheduler import Scheduler, DailyPlan, SchedulerConfig

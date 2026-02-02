@@ -82,12 +82,17 @@ List 3-5 KEY English words/phrases from the question and options that are critic
 - Phrases that create the trap in wrong answers (e.g. "some" vs "all", "correlation" vs "causation")
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 Format each as a bullet point:
 - **English word/phrase** — 中文释义 — 在本题中的作用（一句话）
 =======
 Format each as:
 **English word/phrase** — 中文释义 — 在本题中的作用（一句话）
 >>>>>>> 4b25004 (Fix: Add persistence, improve UX, and fix crash in settings)
+=======
+Format each as a bullet point:
+- **English word/phrase** — 中文释义 — 在本题中的作用（一句话）
+>>>>>>> 21e1c8e (Fix: Add missing asdict import for state persistence and duplicate format in prompts)
 
 ## 🔑 一句话记住
 One actionable takeaway sentence. Format: "遇到[题型/情境]，注意[具体陷阱]，关键是[正确思路]"

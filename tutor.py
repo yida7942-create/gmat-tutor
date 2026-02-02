@@ -116,44 +116,6 @@ Keep it encouraging but honest. Be concise."""
 QUICK_TIP_PROMPT_TEMPLATE = """For a GMAT {question_type} question testing "{skill_tag}", give ONE quick tip (2-3 sentences max) that helps identify the correct answer pattern."""
 
 
-TRANSLATION_PROMPT_TEMPLATE = """请翻译以下 GMAT 题目，并标注重点词汇。
-
-**题干：**
-{question_content}
-
-**选项：**
-A. {option_a}
-B. {option_b}
-C. {option_c}
-D. {option_d}
-E. {option_e}
-
-请按以下格式输出：
-
-## 📖 题目翻译
-
-[题干的中文翻译，保持原文逻辑结构清晰]
-
-## 🔤 选项翻译
-
-A. [选项A翻译]
-B. [选项B翻译]
-C. [选项C翻译]
-D. [选项D翻译]
-E. [选项E翻译]
-
-## 📚 重点词汇
-
-列出 5-8 个对理解本题最关键的词汇/短语，格式：
-- **英文词汇** — 中文释义 — 在本题中的关键作用（一句话）
-
-重点关注：
-1. 改变逻辑方向的连接词（however, nevertheless, although 等）
-2. 程度/范围限定词（some, all, most, only 等）
-3. 学术/商业领域专业词汇
-4. 容易误解的熟词僻义"""
-
-
 # ============== AI Tutor ==============
 
 class AITutor:
@@ -239,67 +201,25 @@ class AITutor:
             return response.choices[0].message.content
         except Exception as e:
             print(f"AI explanation error: {e}")
-            return self._fallback_explanation(question, user_answer)
+            error_msg = f"\n\n> ⚠️ **API 调用错误**: {str(e)}\n> 请检查 Settings 页面中的 API Key 和配置是否正确。"
+            return self._fallback_explanation(question, user_answer) + error_msg
     
     def _fallback_explanation(self, question: Question, user_answer: int) -> str:
-        """Provide a structured explanation when AI is not available.
-
-        Note: This does NOT include question.explanation to avoid duplication
-        with the OG解析 section shown separately in the UI.
-        """
+        """Provide a basic explanation when AI is not available."""
         option_letters = ['A', 'B', 'C', 'D', 'E']
-        correct_letter = option_letters[question.correct_answer]
-        user_letter = option_letters[user_answer]
-        is_correct = (user_answer == question.correct_answer)
+        
+        explanation = f"""## 答案解析
 
-        # Get skill-specific tips
-        skill_tips = {
-            "Assumption": "找假设题的关键：正确答案是论证成立的必要条件。用'否定测试'——否定选项后看论证是否崩塌。",
-            "Strengthen": "加强题要找能填补论证缺口的选项，让结论'更可能'成立。",
-            "Weaken": "削弱题要攻击'前提到结论'的推理过程，寻找替代解释或破坏因果链。",
-            "Inference": "推断题要求'必然为真'。注意'大多数'≠'所有'，正确选项通常更保守。",
-            "Evaluate": "评估题要找能决定论证强弱的关键信息。",
-            "Boldface": "粗体题先判断每个粗体部分的角色，再看逻辑关系。",
-            "Resolve/Explain": "解释题要找能同时解释看似矛盾的两个现象的选项。",
-        }
+**正确答案：** {option_letters[question.correct_answer]}
+**你的选择：** {option_letters[user_answer]}
 
-        primary_tag = question.skill_tags[0] if question.skill_tags else "General"
-        tip = skill_tips.get(primary_tag, "仔细分析论证结构，注意前提与结论之间的逻辑关系。")
-
-        if is_correct:
-            explanation = f"""## ✅ 答对了！
-
-**正确答案：** {correct_letter}
-
-### 📝 考点提示
-**{primary_tag}** — {tip}
-
-### 🔑 巩固要点
-- 考点标签：{', '.join(question.skill_tags)}
-- 难度：{'⭐' * question.difficulty}
-
-_提示：配置 API Key 后可获得更详细的 AI 讲解，包括干扰项分析。_"""
-        else:
-            explanation = f"""## ❌ 答案分析
-
-**正确答案：** {correct_letter}
-**你的选择：** {user_letter}
-
-### 📝 考点提示
-**{primary_tag}** — {tip}
-
-### 🔍 自我检查清单
-1. 是否准确理解了题干的论证结构？
-2. 选项 {user_letter} 是否存在范围过大/过小的问题？
-3. 选项 {user_letter} 是否与原文无关或偷换概念？
-4. 正确答案 {correct_letter} 如何直接支持/反驳论证？
-
-### 🔑 改进建议
-- 考点标签：{', '.join(question.skill_tags)}
-- 难度：{'⭐' * question.difficulty}
-
-_提示：配置 API Key 后可获得更详细的 AI 讲解。_"""
-
+"""
+        if question.explanation:
+            explanation += f"**解析：** {question.explanation}\n\n"
+        
+        explanation += f"**考点标签：** {', '.join(question.skill_tags)}\n\n"
+        explanation += "_提示：配置 API Key 后可获得更详细的 AI 讲解。_"
+        
         return explanation
     
     def generate_session_summary(self,
@@ -437,114 +357,6 @@ _提示：配置 API Key 后可获得更详细的 AI 讲解。_"""
         }
         return tips.get(skill_tag, "仔细阅读题干，识别论证结构，注意题目问的是什么。")
 
-    def translate_question(self, question: Question) -> str:
-        """
-        Translate question and options to Chinese with key vocabulary highlighted.
-
-        Args:
-            question: The question object
-
-        Returns:
-            Translated content with vocabulary notes
-        """
-        client = self._get_client()
-
-        prompt = TRANSLATION_PROMPT_TEMPLATE.format(
-            question_content=question.content,
-            option_a=question.options[0],
-            option_b=question.options[1],
-            option_c=question.options[2],
-            option_d=question.options[3],
-            option_e=question.options[4],
-        )
-
-        if not client:
-            return self._fallback_translation(question)
-
-        try:
-            response = client.chat.completions.create(
-                model=self.config.model,
-                messages=[
-                    {"role": "system", "content": "你是一位专业的 GMAT 翻译专家，擅长准确翻译商业和逻辑推理类文本，同时标注关键词汇帮助学生理解。"},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=1500,
-                temperature=0.3  # Lower temperature for more accurate translation
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            print(f"Translation error: {e}")
-            return self._fallback_translation(question)
-
-    def _fallback_translation(self, question: Question) -> str:
-        """Provide basic translation guidance when AI is not available."""
-        option_letters = ['A', 'B', 'C', 'D', 'E']
-
-        # Common GMAT vocabulary
-        common_vocab = {
-            "however": "然而，但是（转折）",
-            "nevertheless": "尽管如此，然而",
-            "although": "虽然，尽管",
-            "therefore": "因此，所以",
-            "thus": "因此，这样",
-            "moreover": "此外，而且",
-            "furthermore": "此外，再者",
-            "consequently": "因此，结果",
-            "assumption": "假设，前提",
-            "conclusion": "结论",
-            "premise": "前提",
-            "evidence": "证据",
-            "imply": "暗示，意味着",
-            "infer": "推断，推论",
-            "suggest": "表明，暗示",
-            "indicate": "表明，指出",
-            "argue": "论证，主张",
-            "claim": "声称，主张",
-            "assert": "断言，声称",
-            "contend": "主张，争辩",
-            "maintain": "坚持认为，维持",
-            "substantial": "大量的，实质的",
-            "significant": "重要的，显著的",
-            "considerable": "相当大的",
-            "primarily": "主要地",
-            "exclusively": "专门地，排他地",
-            "merely": "仅仅，只不过",
-            "solely": "仅仅，唯一地",
-        }
-
-        # Find vocabulary that appears in the question
-        question_text = question.content.lower()
-        found_vocab = []
-        for word, translation in common_vocab.items():
-            if word in question_text:
-                found_vocab.append(f"- **{word}** — {translation}")
-
-        result = """## 📖 翻译提示
-
-_AI 翻译功能需要配置 API Key。配置后可获得完整的题目翻译和重点词汇分析。_
-
-## 📚 常见 GMAT 词汇参考
-
-"""
-        if found_vocab:
-            result += "**本题中出现的关键词：**\n\n"
-            result += "\n".join(found_vocab[:8])
-        else:
-            result += """**逻辑连接词：**
-- **however** — 然而（转折）
-- **therefore** — 因此（因果）
-- **although** — 虽然（让步）
-- **moreover** — 此外（递进）
-
-**论证相关：**
-- **assumption** — 假设
-- **conclusion** — 结论
-- **evidence** — 证据
-- **imply** — 暗示"""
-
-        result += "\n\n_配置 API Key 后可获得本题的完整翻译。_"
-        return result
-
 
 # ============== Error Taxonomy Reference ==============
 
@@ -581,11 +393,6 @@ ERROR_TAXONOMY = {
 def get_error_taxonomy() -> Dict:
     """Return the error taxonomy for UI display."""
     return ERROR_TAXONOMY
-
-
-def translate_question(tutor: 'AITutor', question: Question) -> str:
-    """Convenience function to translate a question using the provided tutor instance."""
-    return tutor.translate_question(question)
 
 
 # ============== Test ==============

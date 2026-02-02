@@ -292,9 +292,7 @@ class AITutor:
         except Exception as e:
             return f"翻译生成失败: {e}"
 
-            return response.choices[0].message.content
-        except Exception as e:
-            return f"翻译生成失败: {e}"
+
 
     def generate_session_summary(self,
                                 logs: List[StudyLog],

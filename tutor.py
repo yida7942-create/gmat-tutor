@@ -115,33 +115,7 @@ Keep it encouraging but honest. Be concise."""
 
 QUICK_TIP_PROMPT_TEMPLATE = """For a GMAT {question_type} question testing "{skill_tag}", give ONE quick tip (2-3 sentences max) that helps identify the correct answer pattern."""
 
-TRANSLATION_PROMPT_TEMPLATE = """Translate the following GMAT question into professional Chinese.
-
-**Context/Argument:**
-{question_content}
-
-**Options:**
-- A. {option_a}
-- B. {option_b}
-- C. {option_c}
-- D. {option_d}
-- E. {option_e}
-
-Please provide a clear, easy-to-understand translation.
-Format:
-**题目内容**:
-[Chinese translation of the argument/passage]
-
-**选项**:
-- **A**: [Translation]
-- **B**: [Translation]
-- **C**: [Translation]
-- **D**: [Translation]
-- **E**: [Translation]
-"""
-
-
-TRANSLATION_PROMPT_TEMPLATE = """Translate the following GMAT question into professional Chinese.
+TRANSLATION_PROMPT_TEMPLATE = """Provide a bilingual translation and analysis for this GMAT question.
 
 **Context/Argument:**
 {question_content}
@@ -153,17 +127,30 @@ C. {option_c}
 D. {option_d}
 E. {option_e}
 
-Please provide a clear, easy-to-understand translation.
-Format:
-**题目内容**:
-[Chinese translation of the argument/passage]
+Please follow this output format:
 
-**选项**:
-- **A**: [Translation]
-- **B**: [Translation]
-- **C**: [Translation]
-- **D**: [Translation]
-- **E**: [Translation]
+## 🌐 中英对照翻译
+(Break down the argument/passage by sentence or logical chunk. Quote the English first, then translate.)
+
+> **[English text chunk 1]**
+> [Chinese translation]
+
+> **[English text chunk 2]**
+> [Chinese translation]
+
+**选项翻译**:
+- **A**: [Chinese Translation]
+- **B**: [Chinese Translation]
+- **C**: [Chinese Translation]
+- **D**: [Chinese Translation]
+- **E**: [Chinese Translation]
+
+## 🧬 长难句精讲 (Sentence Analysis)
+Select the 1-2 most grammatically complex or critical sentences from the text.
+1. **原句**: [English Sentence]
+   - **结构**: [Analyze the sentence structure]
+   - **点拨**: [Key difficulty: e.g., Inversion, Modifier, Idiom]
+   - **精译**: [Polished Translation]
 """
 
 
@@ -292,11 +279,11 @@ class AITutor:
             response = self._get_client().chat.completions.create(
                 model=self.config.model,
                 messages=[
-                    {"role": "system", "content": "You are a professional translator for GMAT exams."},
+                    {"role": "system", "content": "You are a professional GMAT tutor and translator."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3, # Lower temp for translation accuracy
-                max_tokens=1000
+                temperature=0.3, 
+                max_tokens=1500
             )
             return response.choices[0].message.content
         except Exception as e:

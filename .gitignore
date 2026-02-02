@@ -1,0 +1,18 @@
+# Database (will be recreated from og_questions.json)
+*.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Secrets (NEVER commit real secrets)
+.streamlit/secrets.toml
+
+# System
+.DS_Store
+Thumbs.db
+
+# Local-only files
+*.bat
+og_questions.csv

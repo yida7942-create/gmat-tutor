@@ -81,8 +81,8 @@ List 3-5 KEY English words/phrases from the question and options that are critic
 - GMAT-specific formal vocabulary that Chinese students often misread
 - Phrases that create the trap in wrong answers (e.g. "some" vs "all", "correlation" vs "causation")
 
-Format each as:
-**English word/phrase** — 中文释义 — 在本题中的作用（一句话）
+Format each as a bullet point:
+- **English word/phrase** — 中文释义 — 在本题中的作用（一句话）
 
 ## 🔑 一句话记住
 One actionable takeaway sentence. Format: "遇到[题型/情境]，注意[具体陷阱]，关键是[正确思路]"

@@ -138,12 +138,22 @@ Please follow this output format:
 > **[English text chunk 2]**
 > [Chinese translation]
 
-**选项翻译**:
-- **A**: [Chinese Translation]
-- **B**: [Chinese Translation]
-- **C**: [Chinese Translation]
-- **D**: [Chinese Translation]
-- **E**: [Chinese Translation]
+**选项翻译 (中英对照)**:
+- **A**:
+    > **[English Option A]**
+    > [Chinese Translation]
+- **B**:
+    > **[English Option B]**
+    > [Chinese Translation]
+- **C**:
+    > **[English Option C]**
+    > [Chinese Translation]
+- **D**:
+    > **[English Option D]**
+    > [Chinese Translation]
+- **E**:
+    > **[English Option E]**
+    > [Chinese Translation]
 
 ## 🧬 长难句精讲 (Sentence Analysis)
 Select the 1-2 most grammatically complex or critical sentences from the text.

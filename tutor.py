@@ -61,25 +61,42 @@ E. {option_e}
 **Question Tags:** {skill_tags}
 
 ### 💡 核心思路 (Key Insight)
-In 1-2 sentences, identify the core logical gap, pattern, or testing point. What is the "Aha!" moment?
+In 1-2 sentences, identify the core logical gap, pattern, or testing point.
+**Must include "逻辑链构建" (Logic Chain):** 1. Premise -> 2. Conflict/Goal -> 3. Prediction.
 
 ### 🔍 选项深度辨析 (Comprehensive Option Analysis)
 Analyze ALL options (A-E).
 *   **For the Student's Error ({student_answer})**: Analyze why this specific trap is tempting but wrong. What logical flaw does it commit?
 *   **For the Correct Answer ({correct_answer})**: Explain the direct logical chain. How does it perfectly address the gap?
-*   **For Other Options**: Briefly explain why they are incorrect (irrelevant, opposite, out of scope, etc.).
+*   **For Other Options**: Briefly explain why they are incorrect.
 
 **Format:**
 *   **A**: [Analysis]
 *   **B**: [Analysis]
-*   **C**: [Analysis]
-*   **D**: [Analysis]
-*   **E**: [Analysis]
+...
 
 ### 🔑 一句话记住
-One actionable takeaway sentence. Format: "遇到[题型/情境]，注意[具体陷阱]，关键是[正确思路]"
+One actionable takeaway sentence.
 
-Keep it focused on LOGIC. Do not explain vocabulary here. Keep the response concise and helpful."""
+**Example Output:**
+### 💡 核心思路 (Key Insight)
+**逻辑链构建**：
+1.  **前提**：去枝能减少重量（可能降低运费）。
+2.  **冲突**：去枝这一动作本身需要成本。
+3.  **核心问题**：为了证明"去枝更划算"，必须保证"省下的运费 > 增加的去枝成本"。
+4.  **解题方向**：寻找能放大"运费节省"或缩小"去枝成本"的关键变量。
+*本题考点：方案可行性评估*
+
+### 🔍 选项深度辨析 (Comprehensive Option Analysis)
+*   **A**: [无关] ...
+*   ❌ **B (你的选择)**: [混淆结论与论据] “在工厂去枝会更经济。” 这看起来像是一个支持方案的理由，但它是一个未经证实的假设结论...
+*   ✅ **D (正确答案)**: [填补 Gap] **“运输成本由体积决定，而非重量。”** 既然去枝后的木片体积只有树枝的一半...
+...
+
+### 🔑 一句话记住
+遇到[评估方案可行性]时，要关注方案带来的核心变化（如成本结构的变化）。
+
+**IMPORTANT:** Please respond in **Chinese** (except for specific English terms). Keep logic analysis sharp and direct."""
 
 
 SUMMARY_PROMPT_TEMPLATE = """基于今天的学习记录，请生成一份简要的中文学习总结和建议。
@@ -106,6 +123,7 @@ SUMMARY_PROMPT_TEMPLATE = """基于今天的学习记录，请生成一份简要
 
 
 
+
 LANGUAGE_HELP_PROMPT_TEMPLATE = """Analyze the language aspects of this GMAT {question_type} question.
 
 **Question Content:**
@@ -123,7 +141,15 @@ Select the 1-2 most complex sentences from the text.
 ### 📝 核心词汇 (Core Vocabulary)
 List 3-5 critical words/phrases.
 *   **Word/Phrase** — 中文释义 — Contextual usage notes.
-"""
+
+**Example:**
+### 🧬 长难句精讲 (Sentence Analysis)
+*   **原句**: Although the discount stores in Goreville’s central shopping district are expected to close...
+*   **结构**: `Although` [subsidiary clause] ..., `main clause` ...
+*   **精译**: 尽管各尔维尔中心商业区的折扣店预计将在五年内倒闭...
+*   **点拨**: 注意 `as a result of` 引导的原因状语...
+
+**IMPORTANT:** Please respond in **Chinese**."""
 
 QUICK_TIP_PROMPT_TEMPLATE = """For a GMAT {question_type} question testing "{skill_tag}", give ONE quick tip (2-3 sentences max) that helps identify the correct answer pattern."""
 
@@ -139,43 +165,28 @@ C. {option_c}
 D. {option_d}
 E. {option_e}
 
-Please follow this output format strictly. Use blockquotes (>) for English and plain text for Chinese translation.
+Please follow this output format strictly. Use Clear Styling (Bold English / Plain Chinese). No blockquotes.
 
 ### 🌐 中英对照翻译
 (Break down the argument/passage by sentence or logical chunk.)
 
-> **"Copy the English sentence here."**
+**"English Sentence 1"**
+中文翻译 1
 
-在这里写中文翻译。
-
-> **"Copy the next English sentence here."**
-
-在这里写中文翻译。
+**"English Sentence 2"**
+中文翻译 2
 
 **(Continue for the whole passage...)**
 
 ### 选项翻译 (中英对照)
 
 - **A**:
-    > "English Option Content"
-    
+    **"English Option Content"**
     中文翻译内容
 - **B**:
-    > "English Option Content"
-    
+    **"English Option Content"**
     中文翻译内容
-- **C**:
-    > "English Option Content"
-    
-    中文翻译内容
-- **D**:
-    > "English Option Content"
-    
-    中文翻译内容
-- **E**:
-    > "English Option Content"
-    
-    中文翻译内容
+...
 
 (End of translation)
 """

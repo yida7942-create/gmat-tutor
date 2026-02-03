@@ -59,8 +59,17 @@ class DatabaseManager:
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
         self.conn = None
-        self._connect()
-        self._create_tables()
+        try:
+            self._connect()
+            self._create_tables()
+        except sqlite3.DatabaseError:
+            # Self-healing: Delete corrupt DB and retry
+            if self.conn:
+                self.conn.close()
+            if os.path.exists(self.db_path):
+                os.remove(self.db_path)
+            self._connect()
+            self._create_tables()
     
     def _connect(self):
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)

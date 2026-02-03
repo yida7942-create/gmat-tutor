@@ -66,6 +66,64 @@ if not check_password():
 
 # ============== Auto-Initialize Database ==============
 
+def _try_restore_from_cloud() -> bool:
+    """
+    Try to restore database from GitHub Gist if local DB has no study logs.
+    Returns True if restoration was performed.
+    """
+    try:
+        gist_client = get_gist_client()
+        if not gist_client:
+            return False
+
+        # Check if we have any study logs locally
+        db = get_db()
+        stats = db.get_stats()
+
+        # Only restore if local DB has no study history
+        if stats['total_attempts'] > 0:
+            return False
+
+        # Try to download from cloud
+        from database import DB_PATH
+        success, msg = gist_client.download_db(DB_PATH)
+
+        if success:
+            # Re-initialize database connection with restored data
+            global _db_instance
+            from database import _db_instance as db_inst
+            if db_inst:
+                db_inst.close()
+            # Force re-create the singleton
+            import database
+            database._db_instance = None
+            return True
+
+        return False
+    except Exception as e:
+        # Silently fail - user can manually sync later
+        print(f"Cloud restore failed: {e}")
+        return False
+
+
+def _auto_sync_to_cloud():
+    """
+    Automatically sync database to GitHub Gist (non-blocking).
+    Called after user answers a question.
+    """
+    try:
+        gist_client = get_gist_client()
+        if not gist_client:
+            return
+
+        from database import DB_PATH
+        # Run upload (this is quick for small DBs)
+        gist_client.upload_db(DB_PATH)
+    except Exception:
+        # Silently fail - user can manually sync later
+        pass
+
+
 def ensure_database_ready():
     """If database is empty and og_questions.json exists, auto-import."""
     db = get_db()
@@ -91,8 +149,15 @@ def ensure_database_ready():
             return len(questions)
     return 0
 
+
 # Run auto-init on first load
 if 'db_initialized' not in st.session_state:
+    # 1. Try to restore from cloud first (if local DB has no history)
+    restored_from_cloud = _try_restore_from_cloud()
+    if restored_from_cloud:
+        st.toast("☁️ 已从云端恢复做题记录", icon="✅")
+
+    # 2. Then ensure questions are loaded
     imported = ensure_database_ready()
     st.session_state.db_initialized = True
     if imported > 0:
@@ -690,6 +755,9 @@ def render_result_view(question: Question):
             st.session_state.db.add_study_log(log)
             st.session_state.session_logs.append(log)
 
+            # Auto-sync to cloud (non-blocking, silent)
+            _auto_sync_to_cloud()
+
             # Check emergency drill
             drill = st.session_state.scheduler.record_answer(
                 question, result['is_correct']
@@ -1094,6 +1162,56 @@ def render_settings():
             st.session_state.db_initialized = False
             st.success("✅ 已重置")
             st.rerun()
+
+    st.markdown("---")
+
+    # Cloud Sync
+    st.subheader("☁️ 云同步")
+    st.caption("使用 GitHub Gist 备份做题记录，防止 App 重启后数据丢失。")
+
+    gist_client = get_gist_client()
+    if gist_client:
+        st.success("✅ GitHub Token 已配置，自动同步已启用")
+        st.info("每次答题后会自动同步到云端，App 重启时会自动恢复数据。")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("📤 立即上传到云端", use_container_width=True):
+                with st.spinner("正在上传..."):
+                    from database import DB_PATH
+                    success, msg = gist_client.upload_db(DB_PATH)
+                if success:
+                    st.success("✅ 上传成功！")
+                else:
+                    st.error(f"❌ 上传失败: {msg}")
+
+        with col2:
+            if st.button("📥 从云端恢复", use_container_width=True):
+                with st.spinner("正在下载..."):
+                    from database import DB_PATH
+                    success, msg = gist_client.download_db(DB_PATH)
+                if success:
+                    # Re-init database
+                    st.session_state.db.close()
+                    import database
+                    database._db_instance = None
+                    st.session_state.db = get_db()
+                    st.success("✅ 恢复成功！")
+                    st.rerun()
+                else:
+                    st.error(f"❌ 恢复失败: {msg}")
+    else:
+        st.warning("⚠️ 未配置 GitHub Token，云同步未启用")
+        st.markdown("""
+        **配置方法（推荐）：**
+        1. 前往 [GitHub Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens)
+        2. 创建一个 Token，勾选 `gist` 权限
+        3. 在 Streamlit Cloud 的 Secrets 中添加：
+        ```toml
+        github_token = "ghp_xxxxx"
+        ```
+        配置后，App 重启时会自动从云端恢复数据。
+        """)
 
 
 # ============== Main ==============

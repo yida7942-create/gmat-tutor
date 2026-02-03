@@ -177,8 +177,6 @@ Please follow this output format strictly. Use blockquotes (>) for English and p
     
     中文翻译内容
 
-    中文翻译内容
-
 (End of translation)
 """
 

@@ -637,12 +637,11 @@ def render_result_view(question: Question):
     # --- Content Generation (Eager Load) ---
     # Trigger futures if not cached/running
     
-    # 1. AI Explanation Future
+    # 1. AI Logic Explanation Future
     exp_cache_key = f"ai_exp_{question.id}_{result['user_answer']}"
     exp_future_key = f"future_exp_{question.id}_{result['user_answer']}"
     
     if exp_cache_key not in st.session_state and exp_future_key not in st.session_state:
-        # Submit task
         future = st.session_state.ai_executor.submit(
             st.session_state.tutor.explain_failure,
             question, 
@@ -651,12 +650,22 @@ def render_result_view(question: Question):
         )
         st.session_state[exp_future_key] = future
 
-    # 2. Translation Future
+    # 2. Language Analysis Future (NEW)
+    lang_cache_key = f"ai_lang_{question.id}"
+    lang_future_key = f"future_lang_{question.id}"
+    
+    if lang_cache_key not in st.session_state and lang_future_key not in st.session_state:
+        future = st.session_state.ai_executor.submit(
+            st.session_state.tutor.analyze_language,
+            question
+        )
+        st.session_state[lang_future_key] = future
+
+    # 3. Translation Future
     trans_cache_key = f"ai_trans_{question.id}"
     trans_future_key = f"future_trans_{question.id}"
     
     if trans_cache_key not in st.session_state and trans_future_key not in st.session_state:
-        # Submit task
         future = st.session_state.ai_executor.submit(
             st.session_state.tutor.translate_question,
             question
@@ -665,23 +674,22 @@ def render_result_view(question: Question):
 
     # --- Display Sections ---
 
-    # 1. OG Explanation (restored)
+    # 1. OG Explanation (Native)
     og_exp = question.explanation or ""
     has_og_explanation = og_exp.strip() and not og_exp.strip().startswith("OG Type:")
     if has_og_explanation:
         with st.expander("📖 OG 原书解析", expanded=False):
             st.markdown(og_exp)
 
-    # 2. AI Explanation
-    with st.expander("🤖 AI 讲解", expanded=True):
+    # 2. AI Logic Explanation (Expanded by default)
+    with st.expander("💡 逻辑深度解析 (AI Logic Analysis)", expanded=True):
         if exp_cache_key in st.session_state:
              st.markdown(st.session_state[exp_cache_key])
         elif exp_future_key in st.session_state:
-            # Wait for result
             f = st.session_state[exp_future_key]
             try:
-                with st.spinner("🤖 AI 正在分析题目..."):
-                    res = f.result()  # This blocks until ready
+                with st.spinner("🤖 AI 正在深度分析逻辑..."):
+                    res = f.result()
                 st.session_state[exp_cache_key] = res
                 del st.session_state[exp_future_key]
                 st.markdown(res)
@@ -690,8 +698,25 @@ def render_result_view(question: Question):
         else:
             st.error("任务启动失败")
 
-    # 3. Translation
-    with st.expander("🌐 中文翻译", expanded=False):
+    # 3. Language Basics (Collapsed)
+    with st.expander("📚 语言基础 (长难句/词汇)", expanded=False):
+        if lang_cache_key in st.session_state:
+             st.markdown(st.session_state[lang_cache_key])
+        elif lang_future_key in st.session_state:
+            f = st.session_state[lang_future_key]
+            try:
+                with st.spinner("📝 正在分析语言点..."):
+                    res = f.result()
+                st.session_state[lang_cache_key] = res
+                del st.session_state[lang_future_key]
+                st.markdown(res)
+            except Exception as e:
+                st.error(f"生成失败: {e}")
+        else:
+            st.info("任务排队中...")
+
+    # 4. Full Translation (Collapsed)
+    with st.expander("🌐 全文翻译", expanded=False):
         if trans_cache_key in st.session_state:
              st.markdown(st.session_state[trans_cache_key])
         elif trans_future_key in st.session_state:

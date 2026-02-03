@@ -60,39 +60,26 @@ E. {option_e}
 **Student was correct:** {is_correct}
 **Question Tags:** {skill_tags}
 
-Please structure your explanation as follows:
+### 💡 核心思路 (Key Insight)
+In 1-2 sentences, identify the core logical gap, pattern, or testing point. What is the "Aha!" moment?
 
-### ❌ 你选的 {student_answer} 为什么不对？（如果答对，请分析最具迷惑性的干扰项）
-This is the MOST IMPORTANT section. Be specific and detailed:
-- Quote the key phrase(s) in option {student_answer} that make it wrong
-- For CR: Explain the logical trap (too extreme? irrelevant comparison? necessary vs. sufficient? correlation vs. causation? out of scope?)
-- For RC: Explain what the passage actually says vs. what this option distorts (over-generalization? opposite meaning? not stated? wrong detail?)
-- Explain what the student was probably thinking and why that reasoning is flawed
+### 🔍 选项深度辨析 (Comprehensive Option Analysis)
+Analyze ALL options (A-E).
+*   **For the Student's Error ({student_answer})**: Analyze why this specific trap is tempting but wrong. What logical flaw does it commit?
+*   **For the Correct Answer ({correct_answer})**: Explain the direct logical chain. How does it perfectly address the gap?
+*   **For Other Options**: Briefly explain why they are incorrect (irrelevant, opposite, out of scope, etc.).
 
-### ✅ 正确答案 {correct_answer} 的逻辑链
-- In 2-3 sentences, show the direct logical connection
-- For CR: premise → gap → how this option fills/addresses it
-- For RC: passage evidence (cite specific phrases) → how this option matches
-
-### 🔍 其他选项逐项分析 (Why other options are wrong)
-Briefly analyze why each remaining option is incorrect (1-2 sentences each). Focus on the core logical flaw or text mismatch.
-- **Option [Letter]**: [Reason for elimination]
-- **Option [Letter]**: [Reason for elimination]
-- **Option [Letter]**: [Reason for elimination]
-
-### 📝 关键词汇
-List 3-5 KEY English words/phrases from the question and options that are critical for understanding this question. Focus on:
-- Words that change the logical direction (e.g. "nevertheless", "notwithstanding", "ostensibly")
-- GMAT-specific formal vocabulary that Chinese students often misread
-- Phrases that create the trap in wrong answers (e.g. "some" vs "all", "correlation" vs "causation")
-
-Format each as a bullet point:
-- **English word/phrase** — 中文释义 — 在本题中的作用（一句话）
+**Format:**
+*   **A**: [Analysis]
+*   **B**: [Analysis]
+*   **C**: [Analysis]
+*   **D**: [Analysis]
+*   **E**: [Analysis]
 
 ### 🔑 一句话记住
 One actionable takeaway sentence. Format: "遇到[题型/情境]，注意[具体陷阱]，关键是[正确思路]"
 
-Keep the total response under 600 words. Be direct and specific — avoid generic advice. Use the student's actual wrong choice as the teaching anchor. 请用中文回答（词汇翻译部分保留英文原词）。"""
+Keep it focused on LOGIC. Do not explain vocabulary here. Keep the response concise and helpful."""
 
 
 SUMMARY_PROMPT_TEMPLATE = """基于今天的学习记录，请生成一份简要的中文学习总结和建议。
@@ -117,6 +104,26 @@ SUMMARY_PROMPT_TEMPLATE = """基于今天的学习记录，请生成一份简要
 
 语气要积极鼓励但实事求是。保持简洁扼要。"""
 
+
+
+LANGUAGE_HELP_PROMPT_TEMPLATE = """Analyze the language aspects of this GMAT {question_type} question.
+
+**Question Content:**
+{question_content}
+
+Please provide:
+
+### 🧬 长难句精讲 (Sentence Analysis)
+Select the 1-2 most complex sentences from the text.
+*   **原句**: [English Sentence]
+*   **结构**: [Analyze the structure]
+*   **精译**: [Chinese Translation]
+*   **点拨**: [Grammar point]
+
+### 📝 核心词汇 (Core Vocabulary)
+List 3-5 critical words/phrases.
+*   **Word/Phrase** — 中文释义 — Contextual usage notes.
+"""
 
 QUICK_TIP_PROMPT_TEMPLATE = """For a GMAT {question_type} question testing "{skill_tag}", give ONE quick tip (2-3 sentences max) that helps identify the correct answer pattern."""
 
@@ -170,12 +177,9 @@ Please follow this output format strictly. Use blockquotes (>) for English and p
     
     中文翻译内容
 
-## 🧬 长难句精讲 (Sentence Analysis)
-Select the 1-2 most grammatically complex or critical sentences from the text.
-1. **原句**: [English Sentence]
-   - **结构**: [Analyze the sentence structure]
-   - **点拨**: [Key difficulty: e.g., Inversion, Modifier, Idiom]
-   - **精译**: [Polished Translation]
+    中文翻译内容
+
+(End of translation)
 """
 
 
@@ -286,12 +290,20 @@ class AITutor:
         explanation += "_提示：配置 API Key 后可获得更详细的 AI 讲解。_"
         
         return explanation
-    
+
+    def analyze_language(self, question: Question) -> str:
+        """
+        Generate language analysis (sentence structure & vocabulary).
+        """
+        question_type = "Reading Comprehension (RC)" if question.subcategory == "RC" else "Critical Reasoning (CR)"
+        prompt = LANGUAGE_HELP_PROMPT_TEMPLATE.format(
+            question_type=question_type,
+            question_content=question.content
+        )
+        return self._call_llm(prompt)
+
     def translate_question(self, question: Question) -> str:
         """Translate question content to Chinese."""
-        if not self._get_client():
-            return "⚠️ AI 未连接，请配置 API Key 后使用翻译功能。"
-
         try:
             # Use bilingual prompt
             prompt = TRANSLATION_PROMPT_TEMPLATE.format(

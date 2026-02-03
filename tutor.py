@@ -62,7 +62,7 @@ E. {option_e}
 
 Please structure your explanation as follows. Adapt emphasis based on whether the student was correct or not.
 
-## ❌ 你选的 {student_answer} 为什么不对？（如果答对则改为"✅ 你选对了，注意这些干扰项"）
+### ❌ 你选的 {student_answer} 为什么不对？（如果答对则改为"✅ 你选对了，注意这些干扰项"）
 This is the MOST IMPORTANT section. Be specific and detailed:
 - Quote the key phrase(s) in option {student_answer} that make it wrong
 - For CR: Explain the logical trap (too extreme? irrelevant comparison? necessary vs. sufficient? correlation vs. causation? out of scope?)
@@ -70,12 +70,12 @@ This is the MOST IMPORTANT section. Be specific and detailed:
 - Explain what the student was probably thinking and why that reasoning is flawed
 - If the student answered correctly, briefly note the most tempting wrong answer and why it's a trap
 
-## ✅ 正确答案 {correct_answer} 的逻辑链
+### ✅ 正确答案 {correct_answer} 的逻辑链
 - In 2-3 sentences, show the direct logical connection
 - For CR: premise → gap → how this option fills/addresses it
 - For RC: passage evidence (cite specific phrases) → how this option matches
 
-## 📝 关键词汇
+### 📝 关键词汇
 List 3-5 KEY English words/phrases from the question and options that are critical for understanding this question. Focus on:
 - Words that change the logical direction (e.g. "nevertheless", "notwithstanding", "ostensibly")
 - GMAT-specific formal vocabulary that Chinese students often misread
@@ -84,7 +84,7 @@ List 3-5 KEY English words/phrases from the question and options that are critic
 Format each as a bullet point:
 - **English word/phrase** — 中文释义 — 在本题中的作用（一句话）
 
-## 🔑 一句话记住
+### 🔑 一句话记住
 One actionable takeaway sentence. Format: "遇到[题型/情境]，注意[具体陷阱]，关键是[正确思路]"
 
 Keep the total response under 500 words. Be direct and specific — avoid generic advice. Use the student's actual wrong choice as the teaching anchor. 请用中文回答（词汇翻译部分保留英文原词）。"""
@@ -129,7 +129,7 @@ E. {option_e}
 
 Please follow this output format:
 
-## 🌐 中英对照翻译
+### 🌐 中英对照翻译
 (Break down the argument/passage by sentence or logical chunk. Quote the English first, then translate.)
 
 > **[English text chunk 1]**
@@ -155,7 +155,7 @@ Please follow this output format:
     > **[English Option E]**
     > [Chinese Translation]
 
-## 🧬 长难句精讲 (Sentence Analysis)
+### 🧬 长难句精讲 (Sentence Analysis)
 Select the 1-2 most grammatically complex or critical sentences from the text.
 1. **原句**: [English Sentence]
    - **结构**: [Analyze the sentence structure]

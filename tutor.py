@@ -62,25 +62,25 @@ E. {option_e}
 
 Please structure your explanation as follows:
 
-## ❌ 你选的 {student_answer} 为什么不对？（如果答对，请分析最具迷惑性的干扰项）
+### ❌ 你选的 {student_answer} 为什么不对？（如果答对，请分析最具迷惑性的干扰项）
 This is the MOST IMPORTANT section. Be specific and detailed:
 - Quote the key phrase(s) in option {student_answer} that make it wrong
 - For CR: Explain the logical trap (too extreme? irrelevant comparison? necessary vs. sufficient? correlation vs. causation? out of scope?)
 - For RC: Explain what the passage actually says vs. what this option distorts (over-generalization? opposite meaning? not stated? wrong detail?)
 - Explain what the student was probably thinking and why that reasoning is flawed
 
-## ✅ 正确答案 {correct_answer} 的逻辑链
+### ✅ 正确答案 {correct_answer} 的逻辑链
 - In 2-3 sentences, show the direct logical connection
 - For CR: premise → gap → how this option fills/addresses it
 - For RC: passage evidence (cite specific phrases) → how this option matches
 
-## 🔍 其他选项逐项分析 (Why other options are wrong)
+### 🔍 其他选项逐项分析 (Why other options are wrong)
 Briefly analyze why each remaining option is incorrect (1-2 sentences each). Focus on the core logical flaw or text mismatch.
 - **Option [Letter]**: [Reason for elimination]
 - **Option [Letter]**: [Reason for elimination]
 - **Option [Letter]**: [Reason for elimination]
 
-## 📝 关键词汇
+### 📝 关键词汇
 List 3-5 KEY English words/phrases from the question and options that are critical for understanding this question. Focus on:
 - Words that change the logical direction (e.g. "nevertheless", "notwithstanding", "ostensibly")
 - GMAT-specific formal vocabulary that Chinese students often misread
@@ -89,7 +89,7 @@ List 3-5 KEY English words/phrases from the question and options that are critic
 Format each as a bullet point:
 - **English word/phrase** — 中文释义 — 在本题中的作用（一句话）
 
-## 🔑 一句话记住
+### 🔑 一句话记住
 One actionable takeaway sentence. Format: "遇到[题型/情境]，注意[具体陷阱]，关键是[正确思路]"
 
 Keep the total response under 600 words. Be direct and specific — avoid generic advice. Use the student's actual wrong choice as the teaching anchor. 请用中文回答（词汇翻译部分保留英文原词）。"""

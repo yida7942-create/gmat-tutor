@@ -255,21 +255,7 @@ class AITutor:
             # Fallback to stored explanation if available
             return self._fallback_explanation(question, user_answer)
         
-        try:
-            response = client.chat.completions.create(
-                model=self.config.model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=self.config.max_tokens,
-                temperature=self.config.temperature
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            print(f"AI explanation error: {e}")
-            error_msg = f"\n\n> ⚠️ **API 调用错误**: {str(e)}\n> 请检查 Settings 页面中的 API Key 和配置是否正确。"
-            return self._fallback_explanation(question, user_answer) + error_msg
+        return self._call_llm(prompt, fallback_func=lambda e: self._fallback_explanation(question, user_answer) + f"\n\n> ⚠️ **API 调用错误**: {str(e)}\n> 请检查 Settings 页面中的 API Key 和配置是否正确。")
     
     def _fallback_explanation(self, question: Question, user_answer: int) -> str:
         """Provide a basic explanation when AI is not available."""
@@ -302,29 +288,37 @@ class AITutor:
 
     def translate_question(self, question: Question) -> str:
         """Translate question content to Chinese."""
+        prompt = TRANSLATION_PROMPT_TEMPLATE.format(
+            question_content=question.content,
+            option_a=question.options[0],
+            option_b=question.options[1],
+            option_c=question.options[2],
+            option_d=question.options[3],
+            option_e=question.options[4]
+        )
+        return self._call_llm(prompt, system_prompt="You are a professional GMAT tutor and translator.", temperature=0.3)
+
+    def _call_llm(self, prompt: str, system_prompt: str = SYSTEM_PROMPT, max_tokens: int = None, temperature: float = None, fallback_func=None) -> str:
+        """Helper to call LLM API."""
+        client = self._get_client()
+        if not client:
+            return "⚠️ AI 未连接，请配置 API Key。"
+        
         try:
-            # Use bilingual prompt
-            prompt = TRANSLATION_PROMPT_TEMPLATE.format(
-                question_content=question.content,
-                option_a=question.options[0],
-                option_b=question.options[1],
-                option_c=question.options[2],
-                option_d=question.options[3],
-                option_e=question.options[4]
-            )
-            
-            response = self._get_client().chat.completions.create(
+            response = client.chat.completions.create(
                 model=self.config.model,
                 messages=[
-                    {"role": "system", "content": "You are a professional GMAT tutor and translator."},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3, 
-                max_tokens=2000
+                max_tokens=max_tokens if max_tokens is not None else self.config.max_tokens,
+                temperature=temperature if temperature is not None else self.config.temperature
             )
             return response.choices[0].message.content
         except Exception as e:
-            return f"翻译生成失败: {e}"
+            if fallback_func:
+                return fallback_func(e)
+            return f"❌ AI 生成失败: {str(e)}"
 
 
 

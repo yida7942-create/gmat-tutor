@@ -42,7 +42,7 @@ Your teaching style:
 Language: Always respond in the same language as the user's question or the language they prefer. If the question is in Chinese, respond in Chinese. If in English, respond in English."""
 
 
-EXPLANATION_PROMPT_TEMPLATE = """A student answered a GMAT {question_type} question. Analyze their specific mistake.
+EXPLANATION_PROMPT_TEMPLATE = """A student answered a GMAT {question_type} question. Provide a comprehensive analysis of ALL options.
 
 **Question Type:** {question_type}
 **Question:**
@@ -60,20 +60,25 @@ E. {option_e}
 **Student was correct:** {is_correct}
 **Question Tags:** {skill_tags}
 
-Please structure your explanation as follows. Adapt emphasis based on whether the student was correct or not.
+Please structure your explanation as follows:
 
-## ❌ 你选的 {student_answer} 为什么不对？（如果答对则改为"✅ 你选对了，注意这些干扰项"）
+## ❌ 你选的 {student_answer} 为什么不对？（如果答对，请分析最具迷惑性的干扰项）
 This is the MOST IMPORTANT section. Be specific and detailed:
 - Quote the key phrase(s) in option {student_answer} that make it wrong
 - For CR: Explain the logical trap (too extreme? irrelevant comparison? necessary vs. sufficient? correlation vs. causation? out of scope?)
 - For RC: Explain what the passage actually says vs. what this option distorts (over-generalization? opposite meaning? not stated? wrong detail?)
 - Explain what the student was probably thinking and why that reasoning is flawed
-- If the student answered correctly, briefly note the most tempting wrong answer and why it's a trap
 
 ## ✅ 正确答案 {correct_answer} 的逻辑链
 - In 2-3 sentences, show the direct logical connection
 - For CR: premise → gap → how this option fills/addresses it
 - For RC: passage evidence (cite specific phrases) → how this option matches
+
+## 🔍 其他选项逐项分析 (Why other options are wrong)
+Briefly analyze why each remaining option is incorrect (1-2 sentences each). Focus on the core logical flaw or text mismatch.
+- **Option [Letter]**: [Reason for elimination]
+- **Option [Letter]**: [Reason for elimination]
+- **Option [Letter]**: [Reason for elimination]
 
 ## 📝 关键词汇
 List 3-5 KEY English words/phrases from the question and options that are critical for understanding this question. Focus on:
@@ -87,7 +92,7 @@ Format each as a bullet point:
 ## 🔑 一句话记住
 One actionable takeaway sentence. Format: "遇到[题型/情境]，注意[具体陷阱]，关键是[正确思路]"
 
-Keep the total response under 500 words. Be direct and specific — avoid generic advice. Use the student's actual wrong choice as the teaching anchor. 请用中文回答（词汇翻译部分保留英文原词）。"""
+Keep the total response under 600 words. Be direct and specific — avoid generic advice. Use the student's actual wrong choice as the teaching anchor. 请用中文回答（词汇翻译部分保留英文原词）。"""
 
 
 SUMMARY_PROMPT_TEMPLATE = """基于今天的学习记录，请生成一份简要的中文学习总结和建议。

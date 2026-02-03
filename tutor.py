@@ -339,7 +339,7 @@ class AITutor:
 *   ✅ **D**: [填补 Gap] ..."""
 
         prompt = EXPLANATION_PROMPT_TEMPLATE.format(
-            question_type=question_type,
+            question_type="Reading Comprehension (RC)" if question.subcategory == "RC" else "Critical Reasoning (CR)",
             question_content=question.content,
             option_a=question.options[0],
             option_b=question.options[1],

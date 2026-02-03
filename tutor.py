@@ -132,33 +132,43 @@ C. {option_c}
 D. {option_d}
 E. {option_e}
 
-Please follow this output format:
+Please follow this output format strictly. Use blockquotes (>) for English and plain text for Chinese translation.
 
-## 🌐 中英对照翻译
-(Break down the argument/passage by sentence or logical chunk. Quote the English first, then translate.)
+### 🌐 中英对照翻译
+(Break down the argument/passage by sentence or logical chunk.)
 
-> **[English text chunk 1]**
-> [Chinese translation]
+> **"Copy the English sentence here."**
 
-> **[English text chunk 2]**
-> [Chinese translation]
+在这里写中文翻译。
 
-**选项翻译 (中英对照)**:
+> **"Copy the next English sentence here."**
+
+在这里写中文翻译。
+
+**(Continue for the whole passage...)**
+
+### 选项翻译 (中英对照)
+
 - **A**:
-    > **[English Option A]**
-    > [Chinese Translation]
+    > "English Option Content"
+    
+    中文翻译内容
 - **B**:
-    > **[English Option B]**
-    > [Chinese Translation]
+    > "English Option Content"
+    
+    中文翻译内容
 - **C**:
-    > **[English Option C]**
-    > [Chinese Translation]
+    > "English Option Content"
+    
+    中文翻译内容
 - **D**:
-    > **[English Option D]**
-    > [Chinese Translation]
+    > "English Option Content"
+    
+    中文翻译内容
 - **E**:
-    > **[English Option E]**
-    > [Chinese Translation]
+    > "English Option Content"
+    
+    中文翻译内容
 
 ## 🧬 长难句精讲 (Sentence Analysis)
 Select the 1-2 most grammatically complex or critical sentences from the text.

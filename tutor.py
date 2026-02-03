@@ -230,33 +230,110 @@ class AITutor:
         # Format the prompt
         option_letters = ['A', 'B', 'C', 'D', 'E']
         # Dynamic Logic Guidance based on Subcategory
+        # Dynamic Logic Guidance based on Subcategory
         if question.subcategory == "RC":
-            logic_instruction = """**Must include "文章脉络梳理" (Passage Map):**
-1. **Main Idea**: What is the author's primary purpose?
-2. **Structure**: How does the argument progress?
-3. **Focus**: Locate the relevant detail."""
-            
-            logic_example = """**Example Output (RC):**
+            # --- RC Logic ---
+            if any(t in str(question.skill_tags) or t in question.content for t in ["Main Idea", "Primary Purpose", "主旨", "Main Point"]):
+                 logic_instruction = """**Must include "文章脉络梳理" (Passage Map):** 
+1. **Main Topic**: What is being discussed?
+2. **Structure**: Progression (e.g., Hypothesis -> Evidence).
+3. **Author's Intent**: Primary purpose."""
+                 
+                 logic_example = """**Example Output (RC - Main Idea):**
 ### 💡 核心思路 (Key Insight)
 **文章脉络梳理**：
-1.  **主旨**：对比两种生态理论（平衡态 vs 非平衡态）。
-2.  **结构**：作者反驳了旧观点，指出演替不等于稳定平衡。
-3.  **定位**：定位于第二段转折词 `However` 之后。
+1.  **主旨**：对比两种生态理论。
+2.  **结构**：先介绍传统观点，再提出新证据反驳。
+3.  **意图**：指出旧理论的局限性。
+*本题考点：主旨大意*
 
 ### 🔍 选项深度辨析
 *   ✅ **C**: [同义改写] ..."""
-        else:  # CR or others
-            logic_instruction = """**Must include "逻辑链构建" (Logic Chain):**
+
+            else:  # RC Detail/Inference
+                logic_instruction = """**Must include "定位与推导" (Locator & Logic):** 
+1. **Locator**: Where in the passage (Keywords)?
+2. **Original Text**: Key sentence matches.
+3. **Paraphrase**: How the correct option rewrites the text."""
+                
+                logic_example = """**Example Output (RC - Detail):**
+### 💡 核心思路 (Key Insight)
+**定位与推导**：
+1.  **定位**：根据题干关键词 `supersonic` 定位于第二段。
+2.  **原文**："...cannot sustain flight without..."
+3.  **改写**：原文的双重否定 = 选项的肯定表达。
+*本题考点：细节推断*
+
+### 🔍 选项深度辨析
+*   ✅ **A**: [同义变换] ..."""
+        
+        else:  # --- CR Logic ---
+            tags_str = str(question.skill_tags) + question.content
+            
+            if any(k in tags_str for k in ["Inference", "Must be true", "Conclusion", "归纳"]):
+                 logic_instruction = """**Must include "事实推断" (Deduction):** 
+1. **Fact A**: Key fact provided.
+2. **Fact B**: Another key fact.
+3. **Deduction**: What logically follows (A + B)."""
+                 
+                 logic_example = """**Example Output (CR - Inference):**
+### 💡 核心思路 (Key Insight)
+**事实推断**：
+1.  **事实 A**：电子产品单价下降 20%。
+2.  **事实 B**：销量上升 50%。
+3.  **推断**：总收入 = 单价 x 销量 = 0.8 x 1.5 = 1.2，即上升 20%。
+*本题考点：数字推理*
+
+### 🔍 选项深度辨析
+*   ✅ **C**: [合理推断] 总收入增加..."""
+
+            elif any(k in tags_str for k in ["Explain", "Paradox", "Discrepancy", "解释", "评价"]):
+                 logic_instruction = """**Must include "矛盾消除" (Resolution):** 
+1. **Phenomenon A**: Expected outcome or first fact.
+2. **Phenomenon B**: Actual outcome or conflicting fact.
+3. **Resolution**: The factor that reconciles them."""
+                 
+                 logic_example = """**Example Output (CR - Explain):**
+### 💡 核心思路 (Key Insight)
+**矛盾消除**：
+1.  **现象 A**：工资高，理论上应该人多。
+2.  **现象 B**：实际却招不到人 (Gap)。
+3.  **解释**：寻找抵消高工资优势的负面因素 (如危险环境)。
+*本题考点：解释矛盾*
+
+### 🔍 选项深度辨析
+*   ✅ **B**: [合理解释] 该工厂工作环境极度危险..."""
+
+            elif any(k in tags_str for k in ["Boldface", "Role", "黑脸", "highlighted"]):
+                 logic_instruction = """**Must include "逻辑结构分析" (Structure Analysis):** 
+1. **Boldface 1**: Role of the first part (e.g., Premise, Counter-premise).
+2. **Boldface 2**: Role of the second part (e.g., Conclusion, Support).
+3. **Relationship**: How they relate (Support or Oppose)."""
+                 
+                 logic_example = """**Example Output (CR - Boldface):**
+### 💡 核心思路 (Key Insight)
+**逻辑结构分析**：
+1.  **黑脸句 1**：作者承认的一个事实 (Concession)。
+2.  **黑脸句 2**：文章主结论 (Main Conclusion)。
+3.  **关系**：前者被后者反驳。作者虽然 admit 1，但 argue 2。
+*本题考点：黑脸题结构分析*
+
+### 🔍 选项深度辨析
+*   ✅ **A**: [正确结构] 第一句是作者试图反驳的观点..."""
+
+            else:  # Standard Weaken/Strengthen/Assumption
+                 logic_instruction = """**Must include "逻辑链构建" (Logic Chain):** 
 1. **Premise/Context**: The facts presented.
 2. **Conclusion/Goal**: What is being argued.
 3. **Gap/Assumption**: The missing link."""
-            
-            logic_example = """**Example Output (CR):**
+                 
+                 logic_example = """**Example Output (CR - Weaken/Strengthen):**
 ### 💡 核心思路 (Key Insight)
 **逻辑链构建**：
 1.  **前提**：去枝能减少重量。
 2.  **冲突**：去枝需要成本。
 3.  **Gap**：需证明"省下的运费 > 增加的成本"。
+*本题考点：方案可行性评估*
 
 ### 🔍 选项深度辨析
 *   ✅ **D**: [填补 Gap] ..."""

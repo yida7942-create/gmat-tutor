@@ -62,7 +62,7 @@ E. {option_e}
 
 ### 💡 核心思路 (Key Insight)
 In 1-2 sentences, identify the core logical gap, pattern, or testing point.
-**Must include "逻辑链构建" (Logic Chain):** 1. Premise -> 2. Conflict/Goal -> 3. Prediction.
+{logic_instruction}
 
 ### 🔍 选项深度辨析 (Comprehensive Option Analysis)
 Analyze ALL options (A-E).
@@ -73,28 +73,10 @@ Analyze ALL options (A-E).
 **Format:**
 *   **A**: [Analysis]
 *   **B**: [Analysis]
-...
-
 ### 🔑 一句话记住
 One actionable takeaway sentence.
 
-**Example Output:**
-### 💡 核心思路 (Key Insight)
-**逻辑链构建**：
-1.  **前提**：去枝能减少重量（可能降低运费）。
-2.  **冲突**：去枝这一动作本身需要成本。
-3.  **核心问题**：为了证明"去枝更划算"，必须保证"省下的运费 > 增加的去枝成本"。
-4.  **解题方向**：寻找能放大"运费节省"或缩小"去枝成本"的关键变量。
-*本题考点：方案可行性评估*
-
-### 🔍 选项深度辨析 (Comprehensive Option Analysis)
-*   **A**: [无关] ...
-*   ❌ **B (你的选择)**: [混淆结论与论据] “在工厂去枝会更经济。” 这看起来像是一个支持方案的理由，但它是一个未经证实的假设结论...
-*   ✅ **D (正确答案)**: [填补 Gap] **“运输成本由体积决定，而非重量。”** 既然去枝后的木片体积只有树枝的一半...
-...
-
-### 🔑 一句话记住
-遇到[评估方案可行性]时，要关注方案带来的核心变化（如成本结构的变化）。
+{logic_example}
 
 **IMPORTANT:** Please respond in **Chinese** (except for specific English terms). Keep logic analysis sharp and direct."""
 
@@ -247,7 +229,38 @@ class AITutor:
         
         # Format the prompt
         option_letters = ['A', 'B', 'C', 'D', 'E']
-        question_type = "Reading Comprehension (RC)" if question.subcategory == "RC" else "Critical Reasoning (CR)"
+        # Dynamic Logic Guidance based on Subcategory
+        if question.subcategory == "RC":
+            logic_instruction = """**Must include "文章脉络梳理" (Passage Map):**
+1. **Main Idea**: What is the author's primary purpose?
+2. **Structure**: How does the argument progress?
+3. **Focus**: Locate the relevant detail."""
+            
+            logic_example = """**Example Output (RC):**
+### 💡 核心思路 (Key Insight)
+**文章脉络梳理**：
+1.  **主旨**：对比两种生态理论（平衡态 vs 非平衡态）。
+2.  **结构**：作者反驳了旧观点，指出演替不等于稳定平衡。
+3.  **定位**：定位于第二段转折词 `However` 之后。
+
+### 🔍 选项深度辨析
+*   ✅ **C**: [同义改写] ..."""
+        else:  # CR or others
+            logic_instruction = """**Must include "逻辑链构建" (Logic Chain):**
+1. **Premise/Context**: The facts presented.
+2. **Conclusion/Goal**: What is being argued.
+3. **Gap/Assumption**: The missing link."""
+            
+            logic_example = """**Example Output (CR):**
+### 💡 核心思路 (Key Insight)
+**逻辑链构建**：
+1.  **前提**：去枝能减少重量。
+2.  **冲突**：去枝需要成本。
+3.  **Gap**：需证明"省下的运费 > 增加的成本"。
+
+### 🔍 选项深度辨析
+*   ✅ **D**: [填补 Gap] ..."""
+
         prompt = EXPLANATION_PROMPT_TEMPLATE.format(
             question_type=question_type,
             question_content=question.content,
@@ -259,7 +272,9 @@ class AITutor:
             correct_answer=option_letters[question.correct_answer],
             student_answer=option_letters[user_answer],
             is_correct="Yes" if is_correct else "No",
-            skill_tags=", ".join(question.skill_tags)
+            skill_tags=", ".join(question.skill_tags),
+            logic_instruction=logic_instruction,
+            logic_example=logic_example
         )
         
         if not client:

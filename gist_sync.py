@@ -95,24 +95,55 @@ class GistSync:
             resp = requests.get(f"{GITHUB_API_URL}/gists/{gist_id}", headers=self.headers)
             if resp.status_code != 200:
                 return False, "Failed to fetch Gist."
-            
+
             data = resp.json()
             files = data.get('files', {})
-            
+
             if GIST_FILENAME not in files:
                 return False, "Backup file corrupted or missing."
 
-            # 3. Decode and Write
-            b64_content = files[GIST_FILENAME]['content']
+            file_info = files[GIST_FILENAME]
+
+            # 3. Get content - handle truncated files (GitHub truncates large Gist files)
+            if file_info.get('truncated', False):
+                # Content was truncated by API; fetch full content via raw_url
+                raw_url = file_info.get('raw_url')
+                if not raw_url:
+                    return False, "File truncated and no raw_url available."
+                raw_resp = requests.get(raw_url, headers=self.headers)
+                if raw_resp.status_code != 200:
+                    return False, f"Failed to fetch raw content: {raw_resp.status_code}"
+                b64_content = raw_resp.text
+            else:
+                b64_content = file_info['content']
+
+            if not b64_content or len(b64_content.strip()) == 0:
+                return False, "Remote backup is empty."
+
             db_content = base64.b64decode(b64_content)
+
+            if len(db_content) < 100:
+                return False, "Remote backup appears corrupted (too small)."
 
             # Backup current just in case
             if os.path.exists(db_path):
-                os.rename(db_path, f"{db_path}.bak")
+                try:
+                    os.rename(db_path, f"{db_path}.bak")
+                except OSError:
+                    pass
 
             with open(db_path, "wb") as f:
                 f.write(db_content)
-            
+
+            # Also clean up WAL/SHM files from previous connection
+            for suffix in ['-wal', '-shm']:
+                wal_path = db_path + suffix
+                if os.path.exists(wal_path):
+                    try:
+                        os.remove(wal_path)
+                    except OSError:
+                        pass
+
             return True, "Download successful & DB restored."
 
         except Exception as e:

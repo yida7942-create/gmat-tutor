@@ -71,6 +71,7 @@ def _try_restore_from_cloud() -> bool:
     Try to restore database from GitHub Gist if local DB has no study logs.
     Returns True if restoration was performed.
     """
+    import database
     try:
         gist_client = get_gist_client()
         if not gist_client:
@@ -84,31 +85,40 @@ def _try_restore_from_cloud() -> bool:
         if stats['total_attempts'] > 0:
             return False
 
+        # Close the existing connection before overwriting the file
+        db.close()
+        database._db_instance = None
+
         # Try to download from cloud
-        from database import DB_PATH
-        success, msg = gist_client.download_db(DB_PATH)
+        success, msg = gist_client.download_db(database.DB_PATH)
 
-        if success:
-            # Re-initialize database connection with restored data
-            global _db_instance
-            from database import _db_instance as db_inst
-            if db_inst:
-                db_inst.close()
-            # Force re-create the singleton
-            import database
+        if not success:
+            # Re-create connection to the (empty) local DB
             database._db_instance = None
-            return True
+            return False
 
-        return False
+        # Force re-create the singleton with the restored file
+        database._db_instance = None
+        return True
     except Exception as e:
-        # Silently fail - user can manually sync later
+        # Ensure DB is usable even if restore fails
+        if database._db_instance is None:
+            database._db_instance = None  # get_db() will recreate
         print(f"Cloud restore failed: {e}")
         return False
 
 
+def _auto_sync_to_cloud_task(db_path: str, gist_client):
+    """Background task: checkpoint DB and upload to Gist."""
+    try:
+        gist_client.upload_db(db_path)
+    except Exception:
+        pass
+
+
 def _auto_sync_to_cloud():
     """
-    Automatically sync database to GitHub Gist (non-blocking).
+    Sync database to GitHub Gist in a background thread.
     Called after user answers a question.
     """
     try:
@@ -116,11 +126,20 @@ def _auto_sync_to_cloud():
         if not gist_client:
             return
 
-        from database import DB_PATH
-        # Run upload (this is quick for small DBs)
-        gist_client.upload_db(DB_PATH)
+        import database
+
+        # Checkpoint: flush WAL data into the main .db file
+        # Without this, the .db file may not contain the latest committed data
+        db = get_db()
+        db.checkpoint()
+
+        # Run upload in background thread to avoid blocking the UI
+        executor = st.session_state.get('ai_executor')
+        if executor:
+            executor.submit(_auto_sync_to_cloud_task, database.DB_PATH, gist_client)
+        else:
+            _auto_sync_to_cloud_task(database.DB_PATH, gist_client)
     except Exception:
-        # Silently fail - user can manually sync later
         pass
 
 
@@ -1178,8 +1197,10 @@ def render_settings():
         with col1:
             if st.button("📤 立即上传到云端", use_container_width=True):
                 with st.spinner("正在上传..."):
-                    from database import DB_PATH
-                    success, msg = gist_client.upload_db(DB_PATH)
+                    import database as _db_mod
+                    # Checkpoint: flush WAL data into .db file before upload
+                    st.session_state.db.checkpoint()
+                    success, msg = gist_client.upload_db(_db_mod.DB_PATH)
                 if success:
                     st.success("✅ 上传成功！")
                 else:
@@ -1188,17 +1209,21 @@ def render_settings():
         with col2:
             if st.button("📥 从云端恢复", use_container_width=True):
                 with st.spinner("正在下载..."):
-                    from database import DB_PATH
-                    success, msg = gist_client.download_db(DB_PATH)
-                if success:
-                    # Re-init database
+                    import database as _db_mod
+                    # Close existing connection before overwriting file
                     st.session_state.db.close()
-                    import database
-                    database._db_instance = None
+                    _db_mod._db_instance = None
+                    success, msg = gist_client.download_db(_db_mod.DB_PATH)
+                if success:
+                    # Re-init database with restored file
+                    _db_mod._db_instance = None
                     st.session_state.db = get_db()
                     st.success("✅ 恢复成功！")
                     st.rerun()
                 else:
+                    # Re-create connection even if restore failed
+                    _db_mod._db_instance = None
+                    st.session_state.db = get_db()
                     st.error(f"❌ 恢复失败: {msg}")
     else:
         st.warning("⚠️ 未配置 GitHub Token，云同步未启用")

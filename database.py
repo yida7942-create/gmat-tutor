@@ -486,8 +486,22 @@ class DatabaseManager:
         cursor.execute("DELETE FROM session_store")
         self.conn.commit()
     
+    def checkpoint(self):
+        """Force WAL data into the main database file.
+
+        SQLite WAL mode stores committed data in a separate .db-wal file.
+        Without checkpointing, the main .db file may not contain latest data.
+        This MUST be called before uploading the .db file to cloud backup.
+        """
+        if self.conn:
+            try:
+                self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except Exception:
+                pass
+
     def close(self):
         if self.conn:
+            self.checkpoint()
             self.conn.close()
 
 

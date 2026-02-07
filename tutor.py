@@ -13,10 +13,10 @@ from database import Question, StudyLog
 @dataclass
 class TutorConfig:
     """Configuration for AI tutor.
-    
+
     Supports OpenAI-compatible APIs (火山方舟, DeepSeek, Moonshot, etc.)
     by setting base_url to the provider's endpoint.
-    
+
     Examples:
         火山方舟: base_url="https://ark.cn-beijing.volces.com/api/v3"
         DeepSeek: base_url="https://api.deepseek.com"
@@ -25,7 +25,7 @@ class TutorConfig:
     """
     model: str = "gpt-4o-mini"  # Default model; set to your endpoint ID for 火山方舟
     base_url: str = None  # Set to provider's API endpoint URL
-    max_tokens: int = 1500
+    max_tokens: int = 800  # Reduced from 1500 for faster response
     temperature: float = 0.7
 
 
@@ -42,43 +42,30 @@ Your teaching style:
 Language: Always respond in the same language as the user's question or the language they prefer. If the question is in Chinese, respond in Chinese. If in English, respond in English."""
 
 
-EXPLANATION_PROMPT_TEMPLATE = """A student answered a GMAT {question_type} question. Provide a comprehensive analysis of ALL options.
+EXPLANATION_PROMPT_TEMPLATE = """GMAT {question_type} 题目分析。
 
-**Question Type:** {question_type}
-**Question:**
-{question_content}
+**题目:** {question_content}
 
-**Options:**
-A. {option_a}
-B. {option_b}
-C. {option_c}
-D. {option_d}
-E. {option_e}
+**选项:** A.{option_a} B.{option_b} C.{option_c} D.{option_d} E.{option_e}
 
-**Correct Answer:** {correct_answer}
-**Student Selected:** {student_answer}
-**Student was correct:** {is_correct}
-**Question Tags:** {skill_tags}
+**正确答案:** {correct_answer} | **学生选择:** {student_answer} | **答对:** {is_correct}
 
-### 💡 核心思路 (Key Insight)
-In 1-2 sentences, identify the core logical gap, pattern, or testing point.
-{logic_instruction}
+请用中文简洁回答（约300字）：
 
-### 🔍 选项深度辨析 (Comprehensive Option Analysis)
-Analyze ALL options (A-E).
-*   **For the Student's Error ({student_answer})**: Analyze why this specific trap is tempting but wrong. What logical flaw does it commit?
-*   **For the Correct Answer ({correct_answer})**: Explain the direct logical chain. How does it perfectly address the gap?
-*   **For Other Options**: Briefly explain why they are incorrect.
+## {result_header}
+- 指出{student_answer}选项的具体错误（引用关键词）
+- 解释学生可能的错误思路
 
-**Format:**
-*   **A**: [Analysis]
-*   **B**: [Analysis]
-### 🔑 一句话记住
-One actionable takeaway sentence.
+## ✅ 正确答案逻辑
+2-3句话说明{correct_answer}为什么对
 
-{logic_example}
+## 📝 关键词（3个）
+- **英文词** — 中文意思 — 本题作用
 
-**IMPORTANT:** Please respond in **Chinese** (except for specific English terms). Keep logic analysis sharp and direct."""
+## 🔑 一句话
+"遇到...注意...关键是..."
+
+直接具体，不要泛泛而谈。"""
 
 
 SUMMARY_PROMPT_TEMPLATE = """基于今天的学习记录，请生成一份简要的中文学习总结和建议。
@@ -104,74 +91,32 @@ SUMMARY_PROMPT_TEMPLATE = """基于今天的学习记录，请生成一份简要
 语气要积极鼓励但实事求是。保持简洁扼要。"""
 
 
-
-
-LANGUAGE_HELP_PROMPT_TEMPLATE = """Analyze the language aspects of this GMAT {question_type} question.
-
-**Question Content:**
-{question_content}
-
-Please provide:
-
-### 🧬 长难句精讲 (Sentence Analysis)
-Select the 1-2 most complex sentences from the text.
-*   **原句**: [English Sentence]
-*   **结构**: [Analyze the structure]
-*   **精译**: [Chinese Translation]
-*   **点拨**: [Grammar point]
-
-### 📝 核心词汇 (Core Vocabulary)
-List 3-5 critical words/phrases.
-*   **Word/Phrase** — 中文释义 — Contextual usage notes.
-
-**Example:**
-### 🧬 长难句精讲 (Sentence Analysis)
-*   **原句**: Although the discount stores in Goreville’s central shopping district are expected to close...
-*   **结构**: `Although` [subsidiary clause] ..., `main clause` ...
-*   **精译**: 尽管各尔维尔中心商业区的折扣店预计将在五年内倒闭...
-*   **点拨**: 注意 `as a result of` 引导的原因状语...
-
-**IMPORTANT:** Please respond in **Chinese**."""
-
 QUICK_TIP_PROMPT_TEMPLATE = """For a GMAT {question_type} question testing "{skill_tag}", give ONE quick tip (2-3 sentences max) that helps identify the correct answer pattern."""
 
-TRANSLATION_PROMPT_TEMPLATE = """Provide a bilingual translation and analysis for this GMAT question.
+TRANSLATION_PROMPT_TEMPLATE = """翻译这道GMAT题目。
 
-**Context/Argument:**
-{question_content}
+**题目:** {question_content}
 
-**Options:**
-A. {option_a}
-B. {option_b}
-C. {option_c}
-D. {option_d}
-E. {option_e}
+**选项:** A.{option_a} B.{option_b} C.{option_c} D.{option_d} E.{option_e}
 
-Please follow this output format strictly. Use Clear Styling (Bold English / Plain Chinese). No blockquotes.
+请按以下格式输出：
 
-### 🌐 中英对照翻译
-(Break down the argument/passage by sentence or logical chunk.)
+## 🌐 题目翻译
+（按句翻译，先英文后中文）
 
-**"English Sentence 1"**
-中文翻译 1
+## 📋 选项翻译
+A. [中文]
+B. [中文]
+C. [中文]
+D. [中文]
+E. [中文]
 
-**"English Sentence 2"**
-中文翻译 2
+## 🧬 长难句（1句）
+**原句**: ...
+**结构**: ...
+**精译**: ...
 
-**(Continue for the whole passage...)**
-
-### 选项翻译 (中英对照)
-
-- **A**:
-    **"English Option Content"**
-    中文翻译内容
-- **B**:
-    **"English Option Content"**
-    中文翻译内容
-...
-
-(End of translation)
-"""
+保持简洁。"""
 
 
 
@@ -208,138 +153,32 @@ class AITutor:
         """Check if AI features are available."""
         return self._get_client() is not None
     
-    def explain_failure(self, 
-                       question: Question, 
+    def explain_failure(self,
+                       question: Question,
                        user_answer: int,
                        is_correct: bool = False,
                        language: str = "zh") -> str:
         """
         Generate a detailed explanation focusing on why the user's choice was wrong.
-        
+
         Args:
             question: The question object
             user_answer: Index of the user's selected answer (0-4)
             is_correct: Whether the user answered correctly
             language: "zh" for Chinese, "en" for English
-        
+
         Returns:
             Explanation text
         """
         client = self._get_client()
-        
+
         # Format the prompt
         option_letters = ['A', 'B', 'C', 'D', 'E']
-        # Dynamic Logic Guidance based on Subcategory
-        # Dynamic Logic Guidance based on Subcategory
-        if question.subcategory == "RC":
-            # --- RC Logic ---
-            if any(t in str(question.skill_tags) or t in question.content for t in ["Main Idea", "Primary Purpose", "主旨", "Main Point"]):
-                 logic_instruction = """**Must include "文章脉络梳理" (Passage Map):** 
-1. **Main Topic**: What is being discussed?
-2. **Structure**: Progression (e.g., Hypothesis -> Evidence).
-3. **Author's Intent**: Primary purpose."""
-                 
-                 logic_example = """**Example Output (RC - Main Idea):**
-### 💡 核心思路 (Key Insight)
-**文章脉络梳理**：
-1.  **主旨**：对比两种生态理论。
-2.  **结构**：先介绍传统观点，再提出新证据反驳。
-3.  **意图**：指出旧理论的局限性。
-*本题考点：主旨大意*
-
-### 🔍 选项深度辨析
-*   ✅ **C**: [同义改写] ..."""
-
-            else:  # RC Detail/Inference
-                logic_instruction = """**Must include "定位与推导" (Locator & Logic):** 
-1. **Locator**: Where in the passage (Keywords)?
-2. **Original Text**: Key sentence matches.
-3. **Paraphrase**: How the correct option rewrites the text."""
-                
-                logic_example = """**Example Output (RC - Detail):**
-### 💡 核心思路 (Key Insight)
-**定位与推导**：
-1.  **定位**：根据题干关键词 `supersonic` 定位于第二段。
-2.  **原文**："...cannot sustain flight without..."
-3.  **改写**：原文的双重否定 = 选项的肯定表达。
-*本题考点：细节推断*
-
-### 🔍 选项深度辨析
-*   ✅ **A**: [同义变换] ..."""
-        
-        else:  # --- CR Logic ---
-            tags_str = str(question.skill_tags) + question.content
-            
-            if any(k in tags_str for k in ["Inference", "Must be true", "Conclusion", "归纳"]):
-                 logic_instruction = """**Must include "事实推断" (Deduction):** 
-1. **Fact A**: Key fact provided.
-2. **Fact B**: Another key fact.
-3. **Deduction**: What logically follows (A + B)."""
-                 
-                 logic_example = """**Example Output (CR - Inference):**
-### 💡 核心思路 (Key Insight)
-**事实推断**：
-1.  **事实 A**：电子产品单价下降 20%。
-2.  **事实 B**：销量上升 50%。
-3.  **推断**：总收入 = 单价 x 销量 = 0.8 x 1.5 = 1.2，即上升 20%。
-*本题考点：数字推理*
-
-### 🔍 选项深度辨析
-*   ✅ **C**: [合理推断] 总收入增加..."""
-
-            elif any(k in tags_str for k in ["Explain", "Paradox", "Discrepancy", "解释", "评价"]):
-                 logic_instruction = """**Must include "矛盾消除" (Resolution):** 
-1. **Phenomenon A**: Expected outcome or first fact.
-2. **Phenomenon B**: Actual outcome or conflicting fact.
-3. **Resolution**: The factor that reconciles them."""
-                 
-                 logic_example = """**Example Output (CR - Explain):**
-### 💡 核心思路 (Key Insight)
-**矛盾消除**：
-1.  **现象 A**：工资高，理论上应该人多。
-2.  **现象 B**：实际却招不到人 (Gap)。
-3.  **解释**：寻找抵消高工资优势的负面因素 (如危险环境)。
-*本题考点：解释矛盾*
-
-### 🔍 选项深度辨析
-*   ✅ **B**: [合理解释] 该工厂工作环境极度危险..."""
-
-            elif any(k in tags_str for k in ["Boldface", "Role", "黑脸", "highlighted"]):
-                 logic_instruction = """**Must include "逻辑结构分析" (Structure Analysis):** 
-1. **Boldface 1**: Role of the first part (e.g., Premise, Counter-premise).
-2. **Boldface 2**: Role of the second part (e.g., Conclusion, Support).
-3. **Relationship**: How they relate (Support or Oppose)."""
-                 
-                 logic_example = """**Example Output (CR - Boldface):**
-### 💡 核心思路 (Key Insight)
-**逻辑结构分析**：
-1.  **黑脸句 1**：作者承认的一个事实 (Concession)。
-2.  **黑脸句 2**：文章主结论 (Main Conclusion)。
-3.  **关系**：前者被后者反驳。作者虽然 admit 1，但 argue 2。
-*本题考点：黑脸题结构分析*
-
-### 🔍 选项深度辨析
-*   ✅ **A**: [正确结构] 第一句是作者试图反驳的观点..."""
-
-            else:  # Standard Weaken/Strengthen/Assumption
-                 logic_instruction = """**Must include "逻辑链构建" (Logic Chain):** 
-1. **Premise/Context**: The facts presented.
-2. **Conclusion/Goal**: What is being argued.
-3. **Gap/Assumption**: The missing link."""
-                 
-                 logic_example = """**Example Output (CR - Weaken/Strengthen):**
-### 💡 核心思路 (Key Insight)
-**逻辑链构建**：
-1.  **前提**：去枝能减少重量。
-2.  **冲突**：去枝需要成本。
-3.  **Gap**：需证明"省下的运费 > 增加的成本"。
-*本题考点：方案可行性评估*
-
-### 🔍 选项深度辨析
-*   ✅ **D**: [填补 Gap] ..."""
+        question_type = "RC" if question.subcategory == "RC" else "CR"
+        result_header = "✅ 答对了，注意干扰项" if is_correct else f"❌ 为什么{option_letters[user_answer]}错"
 
         prompt = EXPLANATION_PROMPT_TEMPLATE.format(
-            question_type="Reading Comprehension (RC)" if question.subcategory == "RC" else "Critical Reasoning (CR)",
+            question_type=question_type,
             question_content=question.content,
             option_a=question.options[0],
             option_b=question.options[1],
@@ -348,17 +187,77 @@ class AITutor:
             option_e=question.options[4],
             correct_answer=option_letters[question.correct_answer],
             student_answer=option_letters[user_answer],
-            is_correct="Yes" if is_correct else "No",
-            skill_tags=", ".join(question.skill_tags),
-            logic_instruction=logic_instruction,
-            logic_example=logic_example
+            is_correct="是" if is_correct else "否",
+            result_header=result_header
         )
-        
+
         if not client:
-            # Fallback to stored explanation if available
             return self._fallback_explanation(question, user_answer)
-        
-        return self._call_llm(prompt, fallback_func=lambda e: self._fallback_explanation(question, user_answer) + f"\n\n> ⚠️ **API 调用错误**: {str(e)}\n> 请检查 Settings 页面中的 API Key 和配置是否正确。")
+
+        try:
+            response = client.chat.completions.create(
+                model=self.config.model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=self.config.max_tokens,
+                temperature=self.config.temperature
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"AI explanation error: {e}")
+            error_msg = f"\n\n> ⚠️ **API 调用错误**: {str(e)}\n> 请检查 Settings 页面中的 API Key 和配置是否正确。"
+            return self._fallback_explanation(question, user_answer) + error_msg
+
+    def explain_failure_stream(self,
+                               question: Question,
+                               user_answer: int,
+                               is_correct: bool = False):
+        """
+        Generate explanation with streaming for faster perceived response.
+        Yields chunks of text as they arrive from the API.
+        """
+        client = self._get_client()
+
+        option_letters = ['A', 'B', 'C', 'D', 'E']
+        question_type = "RC" if question.subcategory == "RC" else "CR"
+        result_header = "✅ 答对了，注意干扰项" if is_correct else f"❌ 为什么{option_letters[user_answer]}错"
+
+        prompt = EXPLANATION_PROMPT_TEMPLATE.format(
+            question_type=question_type,
+            question_content=question.content,
+            option_a=question.options[0],
+            option_b=question.options[1],
+            option_c=question.options[2],
+            option_d=question.options[3],
+            option_e=question.options[4],
+            correct_answer=option_letters[question.correct_answer],
+            student_answer=option_letters[user_answer],
+            is_correct="是" if is_correct else "否",
+            result_header=result_header
+        )
+
+        if not client:
+            yield self._fallback_explanation(question, user_answer)
+            return
+
+        try:
+            stream = client.chat.completions.create(
+                model=self.config.model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=self.config.max_tokens,
+                temperature=self.config.temperature,
+                stream=True
+            )
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        except Exception as e:
+            yield f"\n\n> ⚠️ **API 错误**: {str(e)}"
     
     def _fallback_explanation(self, question: Question, user_answer: int) -> str:
         """Provide a basic explanation when AI is not available."""
@@ -377,51 +276,66 @@ class AITutor:
         explanation += "_提示：配置 API Key 后可获得更详细的 AI 讲解。_"
         
         return explanation
-
-    def analyze_language(self, question: Question) -> str:
-        """
-        Generate language analysis (sentence structure & vocabulary).
-        """
-        question_type = "Reading Comprehension (RC)" if question.subcategory == "RC" else "Critical Reasoning (CR)"
-        prompt = LANGUAGE_HELP_PROMPT_TEMPLATE.format(
-            question_type=question_type,
-            question_content=question.content
-        )
-        return self._call_llm(prompt)
-
+    
     def translate_question(self, question: Question) -> str:
         """Translate question content to Chinese."""
-        prompt = TRANSLATION_PROMPT_TEMPLATE.format(
-            question_content=question.content,
-            option_a=question.options[0],
-            option_b=question.options[1],
-            option_c=question.options[2],
-            option_d=question.options[3],
-            option_e=question.options[4]
-        )
-        return self._call_llm(prompt, system_prompt="You are a professional GMAT tutor and translator.", temperature=0.3)
+        if not self._get_client():
+            return "⚠️ AI 未连接，请配置 API Key 后使用翻译功能。"
 
-    def _call_llm(self, prompt: str, system_prompt: str = SYSTEM_PROMPT, max_tokens: int = None, temperature: float = None, fallback_func=None) -> str:
-        """Helper to call LLM API."""
-        client = self._get_client()
-        if not client:
-            return "⚠️ AI 未连接，请配置 API Key。"
-        
         try:
-            response = client.chat.completions.create(
+            prompt = TRANSLATION_PROMPT_TEMPLATE.format(
+                question_content=question.content,
+                option_a=question.options[0],
+                option_b=question.options[1],
+                option_c=question.options[2],
+                option_d=question.options[3],
+                option_e=question.options[4]
+            )
+
+            response = self._get_client().chat.completions.create(
                 model=self.config.model,
                 messages=[
-                    {"role": "system", "content": system_prompt},
+                    {"role": "system", "content": "You are a GMAT translator. Be concise."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=max_tokens if max_tokens is not None else self.config.max_tokens,
-                temperature=temperature if temperature is not None else self.config.temperature
+                temperature=0.3,
+                max_tokens=1000  # Reduced from 2000
             )
             return response.choices[0].message.content
         except Exception as e:
-            if fallback_func:
-                return fallback_func(e)
-            return f"❌ AI 生成失败: {str(e)}"
+            return f"翻译生成失败: {e}"
+
+    def translate_question_stream(self, question: Question):
+        """Translate question with streaming for faster perceived response."""
+        if not self._get_client():
+            yield "⚠️ AI 未连接，请配置 API Key 后使用翻译功能。"
+            return
+
+        try:
+            prompt = TRANSLATION_PROMPT_TEMPLATE.format(
+                question_content=question.content,
+                option_a=question.options[0],
+                option_b=question.options[1],
+                option_c=question.options[2],
+                option_d=question.options[3],
+                option_e=question.options[4]
+            )
+
+            stream = self._get_client().chat.completions.create(
+                model=self.config.model,
+                messages=[
+                    {"role": "system", "content": "You are a GMAT translator. Be concise."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=1000,
+                stream=True
+            )
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        except Exception as e:
+            yield f"翻译生成失败: {e}"
 
 
 

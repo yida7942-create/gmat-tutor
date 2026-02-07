@@ -653,101 +653,54 @@ def render_result_view(question: Question):
 
     st.markdown("---")
 
-    # --- Content Generation (Eager Load) ---
-    # Trigger futures if not cached/running
-    
-    # 1. AI Logic Explanation Future
+    # --- Cache Keys ---
     exp_cache_key = f"ai_exp_{question.id}_{result['user_answer']}"
-    exp_future_key = f"future_exp_{question.id}_{result['user_answer']}"
-    
-    if exp_cache_key not in st.session_state and exp_future_key not in st.session_state:
-        future = st.session_state.ai_executor.submit(
-            st.session_state.tutor.explain_failure,
-            question, 
-            result['user_answer'], 
-            result['is_correct']
-        )
-        st.session_state[exp_future_key] = future
-
-    # 2. Language Analysis Future (NEW)
-    lang_cache_key = f"ai_lang_{question.id}"
-    lang_future_key = f"future_lang_{question.id}"
-    
-    if lang_cache_key not in st.session_state and lang_future_key not in st.session_state:
-        future = st.session_state.ai_executor.submit(
-            st.session_state.tutor.analyze_language,
-            question
-        )
-        st.session_state[lang_future_key] = future
-
-    # 3. Translation Future
     trans_cache_key = f"ai_trans_{question.id}"
-    trans_future_key = f"future_trans_{question.id}"
-    
-    if trans_cache_key not in st.session_state and trans_future_key not in st.session_state:
-        future = st.session_state.ai_executor.submit(
-            st.session_state.tutor.translate_question,
-            question
-        )
-        st.session_state[trans_future_key] = future
 
     # --- Display Sections ---
 
-    # 1. OG Explanation (Native)
+    # 1. OG Explanation (restored)
     og_exp = question.explanation or ""
     has_og_explanation = og_exp.strip() and not og_exp.strip().startswith("OG Type:")
     if has_og_explanation:
         with st.expander("📖 OG 原书解析", expanded=False):
             st.markdown(og_exp)
 
-    # 2. AI Logic Explanation (Expanded by default)
-    with st.expander("💡 逻辑深度解析 (AI Logic Analysis)", expanded=True):
+    # 2. AI Explanation (with streaming for faster perceived response)
+    with st.expander("🤖 AI 讲解", expanded=True):
         if exp_cache_key in st.session_state:
-             st.markdown(st.session_state[exp_cache_key])
-        elif exp_future_key in st.session_state:
-            f = st.session_state[exp_future_key]
+            st.markdown(st.session_state[exp_cache_key])
+        else:
+            # Use streaming - user sees text immediately as it arrives
             try:
-                with st.spinner("🤖 AI 正在深度分析逻辑..."):
-                    res = f.result()
-                st.session_state[exp_cache_key] = res
-                del st.session_state[exp_future_key]
-                st.markdown(res)
+                stream = st.session_state.tutor.explain_failure_stream(
+                    question,
+                    result['user_answer'],
+                    result['is_correct']
+                )
+                full_text = st.write_stream(stream)
+                st.session_state[exp_cache_key] = full_text
             except Exception as e:
                 st.error(f"生成失败: {e}")
-        else:
-            st.error("任务启动失败")
 
-    # 3. Language Basics (Collapsed)
-    with st.expander("📚 语言基础 (长难句/词汇)", expanded=False):
-        if lang_cache_key in st.session_state:
-             st.markdown(st.session_state[lang_cache_key])
-        elif lang_future_key in st.session_state:
-            f = st.session_state[lang_future_key]
-            try:
-                with st.spinner("📝 正在分析语言点..."):
-                    res = f.result()
-                st.session_state[lang_cache_key] = res
-                del st.session_state[lang_future_key]
-                st.markdown(res)
-            except Exception as e:
-                st.error(f"生成失败: {e}")
-        else:
-            st.info("任务排队中...")
-
-    # 4. Full Translation (Collapsed)
-    with st.expander("🌐 全文翻译", expanded=False):
+    # 3. Translation (with streaming)
+    with st.expander("🌐 中文翻译", expanded=False):
         if trans_cache_key in st.session_state:
-             st.markdown(st.session_state[trans_cache_key])
-        elif trans_future_key in st.session_state:
-             f = st.session_state[trans_future_key]
-             try:
-                with st.spinner("🌐 正在生成翻译..."):
-                    res = f.result()
-                st.session_state[trans_cache_key] = res
-                del st.session_state[trans_future_key]
-                st.markdown(res)
-             except Exception as e:
-                 st.error(f"翻译失败: {e}")
+            st.markdown(st.session_state[trans_cache_key])
+        elif st.session_state.get(f"trans_loading_{question.id}"):
+            # Already loading, show spinner
+            st.spinner("🌐 正在生成翻译...")
+        else:
+            # Load on expand - use button to trigger streaming
+            if st.button("📥 加载翻译", key=f"load_trans_{question.id}"):
+                st.session_state[f"trans_loading_{question.id}"] = True
+                try:
+                    stream = st.session_state.tutor.translate_question_stream(question)
+                    full_text = st.write_stream(stream)
+                    st.session_state[trans_cache_key] = full_text
+                    del st.session_state[f"trans_loading_{question.id}"]
+                except Exception as e:
+                    st.error(f"翻译失败: {e}")
 
     st.markdown("---")
     

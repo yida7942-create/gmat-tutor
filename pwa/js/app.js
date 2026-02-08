@@ -27,6 +27,9 @@ async function initApp() {
 
   await DB.openDB();
 
+  // Try auto-restore from cloud if local DB has no study history
+  await tryRestoreFromCloud();
+
   // Load question bank if empty
   const allQ = await DB.getAllQuestions();
   if (allQ.length === 0) {
@@ -40,8 +43,9 @@ async function initApp() {
     }
   }
 
-  // Init scheduler
-  AppState.scheduler = new Scheduler();
+  // Init scheduler - load saved config
+  const savedSchedulerConfig = await loadSchedulerConfig();
+  AppState.scheduler = new Scheduler(savedSchedulerConfig);
 
   // Init AI tutor
   AppState.tutor = new AITutor();
@@ -61,6 +65,77 @@ async function initApp() {
     navigateTo('practice');
   } else {
     navigateTo('dashboard');
+  }
+}
+
+// ============== Auto-Restore from Cloud ==============
+
+async function tryRestoreFromCloud() {
+  try {
+    const client = getGistClient();
+    if (!client || !navigator.onLine) return;
+
+    // Only restore if local DB has no study history
+    const stats = await DB.getStats();
+    if (stats.total_attempts > 0) return;
+
+    showLoading('Restoring from cloud...');
+    const res = await client.download();
+    if (res.success) {
+      showToast('☁️ Data restored from cloud', 3000);
+    }
+  } catch (e) {
+    console.warn('Cloud restore failed:', e);
+  }
+}
+
+// ============== Scheduler Config Persistence ==============
+
+async function loadSchedulerConfig() {
+  try {
+    const raw = await DB.loadSession('scheduler_config');
+    if (raw) return JSON.parse(raw);
+  } catch (e) { /* ignore */ }
+  return null;
+}
+
+async function saveSchedulerConfig(config) {
+  await DB.saveSession('scheduler_config', JSON.stringify(config));
+  AppState.scheduler = new Scheduler(config);
+}
+
+// ============== CSV Export ==============
+
+async function exportCSV() {
+  try {
+    const logs = await DB.getStudyLogs(10000);
+    const allQ = await DB.getAllQuestions();
+    const qMap = {};
+    allQ.forEach(q => { qMap[q.id] = q; });
+
+    const header = 'id,question_id,subcategory,skill_tags,user_answer,is_correct,time_taken,error_category,error_detail,timestamp';
+    const rows = logs.map((l, i) => {
+      const q = qMap[l.question_id];
+      const sub = q ? q.subcategory : '';
+      const tags = q ? (q.skill_tags || []).join(';') : '';
+      return [
+        i + 1, l.question_id, sub, '"' + tags + '"',
+        l.user_answer, l.is_correct ? 1 : 0, l.time_taken,
+        l.error_category || '', l.error_detail || '', l.timestamp
+      ].join(',');
+    });
+
+    const csv = header + '\n' + rows.join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `gmat_study_logs_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('CSV exported');
+  } catch (e) {
+    showToast('Export failed: ' + e.message);
   }
 }
 
@@ -841,6 +916,13 @@ async function renderProgress() {
     container.innerHTML += trendHtml;
     drawTrendChart('progress-trend-chart', progress.dailyTrend);
   }
+
+  // Export button
+  if (progress.totalAttempts > 0) {
+    container.innerHTML += `<div style="margin-top:16px">
+      <button class="btn btn-secondary btn-small" onclick="exportCSV()">📊 Export Study Logs (CSV)</button>
+    </div>`;
+  }
 }
 
 // ============== Settings Page ==============
@@ -909,16 +991,49 @@ async function renderSettings() {
 
   html += `<div class="divider"></div>`;
 
+  // Scheduler Config
+  const schCfg = AppState.scheduler.config;
+  html += `<div class="settings-section">
+    <h2>📅 Scheduler Configuration</h2>
+    <div class="form-group">
+      <label>Default daily questions</label>
+      <div class="number-stepper">
+        <button onclick="stepNum('sch-daily',-5)">-</button>
+        <div class="num-value" id="sch-daily">${schCfg.defaultQuestionCount}</div>
+        <button onclick="stepNum('sch-daily',5)">+</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Max consecutive same-tag questions</label>
+      <div class="number-stepper">
+        <button onclick="stepNum('sch-consec',-1)">-</button>
+        <div class="num-value" id="sch-consec">${schCfg.maxConsecutiveSameTag}</div>
+        <button onclick="stepNum('sch-consec',1)">+</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Keep-alive quota: <strong id="sch-keep-label">${Math.round(schCfg.keepAliveQuota * 100)}%</strong></label>
+      <input type="range" id="sch-keep" min="5" max="30" value="${Math.round(schCfg.keepAliveQuota * 100)}"
+        oninput="document.getElementById('sch-keep-label').textContent=this.value+'%'"
+        style="width:100%">
+      <div class="hint">Percentage of questions from mastered topics to keep them fresh</div>
+    </div>
+    <button class="btn btn-primary btn-small" onclick="saveSchedulerSettings()">Save Scheduler Config</button>
+  </div>`;
+
+  html += `<div class="divider"></div>`;
+
   // Data Management
   html += `<div class="settings-section">
     <h2>🗃️ Data Management</h2>
     <div class="alert alert-info">
       Questions: ${stats.total_questions} | Practice records: ${stats.total_attempts}
     </div>
-    <div class="btn-row">
+    <div class="btn-row" style="margin-bottom:8px">
+      <button class="btn btn-secondary btn-small" onclick="exportCSV()">📊 Export CSV</button>
       <button class="btn btn-secondary btn-small" onclick="exportData()">📥 Export JSON</button>
-      <button class="btn btn-danger btn-small" onclick="resetData()">🗑️ Reset Data</button>
     </div>
+    <button class="btn btn-danger btn-small" onclick="resetData()" style="width:100%">🗑️ Reset All Practice Data</button>
   </div>`;
 
   // Version info
@@ -943,6 +1058,19 @@ function onProviderChange() {
   const p = presets[sel];
   document.getElementById('set-model').value = p.model;
   document.getElementById('set-base-url').value = p.base_url;
+}
+
+async function saveSchedulerSettings() {
+  const daily = parseInt(document.getElementById('sch-daily').textContent);
+  const consec = parseInt(document.getElementById('sch-consec').textContent);
+  const keep = parseInt(document.getElementById('sch-keep').value);
+  const config = {
+    defaultQuestionCount: Math.max(5, Math.min(50, daily)),
+    maxConsecutiveSameTag: Math.max(1, Math.min(10, consec)),
+    keepAliveQuota: keep / 100,
+  };
+  await saveSchedulerConfig(config);
+  showToast('Scheduler config saved');
 }
 
 async function saveAndTestAI() {

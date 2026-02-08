@@ -957,8 +957,18 @@ async function renderSettings() {
     <div class="form-group">
       <label>AI Provider</label>
       <select id="set-provider" onchange="onProviderChange()">`;
+  // Detect current provider from saved base_url
+  const savedUrl = AppState.tutor.baseUrl || '';
+  let currentProvider = 'custom';
   for (const [key, p] of Object.entries(providerPresets)) {
-    html += `<option value="${key}">${p.label}</option>`;
+    if (p.base_url && savedUrl.includes(p.base_url.replace(/\/v\d+$/, ''))) {
+      currentProvider = key;
+      break;
+    }
+  }
+  for (const [key, p] of Object.entries(providerPresets)) {
+    const sel = key === currentProvider ? ' selected' : '';
+    html += `<option value="${key}"${sel}>${p.label}</option>`;
   }
   html += `</select></div>
     <div class="form-group">
@@ -1103,7 +1113,14 @@ async function saveAndTestAI() {
   const baseUrl = document.getElementById('set-base-url').value.trim();
   const resultEl = document.getElementById('ai-test-result');
 
-  AppState.tutor.configure(apiKey, model, baseUrl);
+  // Auto-correct Volcano Coding Plan URL
+  let correctedBaseUrl = baseUrl;
+  if (model === 'ark-code-latest' && baseUrl && !baseUrl.includes('/coding')) {
+    correctedBaseUrl = 'https://ark.cn-beijing.volces.com/api/coding/v3';
+    document.getElementById('set-base-url').value = correctedBaseUrl;
+  }
+
+  AppState.tutor.configure(apiKey, model, correctedBaseUrl);
   await AppState.tutor.saveToDB();
   updateStatusIndicators();
 

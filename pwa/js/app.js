@@ -80,9 +80,18 @@ async function tryRestoreFromCloud() {
     if (stats.total_attempts > 0) return;
 
     showLoading('Restoring from cloud...');
-    const res = await client.download();
+
+    // Try Streamlit export first (preferred cross-sync source)
+    let res = await client.downloadFromStreamlit();
+    if (res.success && res.imported > 0) {
+      showToast('☁️ Synced from Streamlit data', 3000);
+      return;
+    }
+
+    // Fallback to PWA standalone backup
+    res = await client.download();
     if (res.success) {
-      showToast('☁️ Data restored from cloud', 3000);
+      showToast('☁️ Data restored from cloud backup', 3000);
     }
   } catch (e) {
     console.warn('Cloud restore failed:', e);
@@ -974,7 +983,7 @@ async function renderSettings() {
   html += `<div class="settings-section">
     <h2>☁️ Cloud Sync</h2>
     <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:10px">
-      Use GitHub Gist to backup your practice data.
+      Sync with Streamlit version via GitHub Gist. Use the same token as Streamlit.
     </p>
     <div class="form-group">
       <label>GitHub Token</label>
@@ -982,9 +991,24 @@ async function renderSettings() {
       <div class="hint">Create at GitHub Settings → Developer settings → Personal access tokens (gist scope)</div>
     </div>
     <button class="btn btn-secondary btn-small" onclick="saveGitHubToken()" style="margin-bottom:10px">Save Token</button>
+
+    <h3 style="margin:16px 0 8px;font-size:0.95rem">🔄 Streamlit Cross-Sync</h3>
+    <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:8px">
+      Download study data from Streamlit, or upload offline records back to Streamlit.
+    </p>
     <div class="btn-row">
-      <button class="btn btn-primary btn-small" onclick="uploadToCloud()">📤 Upload</button>
-      <button class="btn btn-secondary btn-small" onclick="downloadFromCloud()">📥 Download</button>
+      <button class="btn btn-primary btn-small" onclick="syncToStreamlit()">📤 Upload to Streamlit</button>
+      <button class="btn btn-secondary btn-small" onclick="syncFromStreamlit()">📥 Sync from Streamlit</button>
+    </div>
+    <div id="cross-sync-result" style="margin-top:10px"></div>
+
+    <h3 style="margin:16px 0 8px;font-size:0.95rem">💾 PWA Full Backup</h3>
+    <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:8px">
+      Full backup/restore for PWA standalone use.
+    </p>
+    <div class="btn-row">
+      <button class="btn btn-primary btn-small" onclick="uploadToCloud()">📤 Backup</button>
+      <button class="btn btn-secondary btn-small" onclick="downloadFromCloud()">📥 Restore</button>
     </div>
     <div id="sync-result" style="margin-top:10px"></div>
   </div>`;
@@ -1112,6 +1136,48 @@ function saveGitHubToken() {
     showToast('GitHub Token removed');
   }
 }
+
+// ---- Streamlit Cross-Sync ----
+
+async function syncToStreamlit() {
+  const resultEl = document.getElementById('cross-sync-result');
+  const client = getGistClient();
+  if (!client) {
+    resultEl.innerHTML = `<div class="alert alert-warning">Please save GitHub Token first.</div>`;
+    return;
+  }
+  if (!navigator.onLine) {
+    resultEl.innerHTML = `<div class="alert alert-warning">No internet connection.</div>`;
+    return;
+  }
+
+  resultEl.innerHTML = `<div><span class="spinner"></span>Uploading to Streamlit...</div>`;
+  const res = await client.uploadToStreamlit();
+  resultEl.innerHTML = `<div class="alert ${res.success ? 'alert-success' : 'alert-danger'}">${res.success ? '✅' : '❌'} ${escapeHtml(res.message)}</div>`;
+}
+
+async function syncFromStreamlit() {
+  const resultEl = document.getElementById('cross-sync-result');
+  const client = getGistClient();
+  if (!client) {
+    resultEl.innerHTML = `<div class="alert alert-warning">Please save GitHub Token first.</div>`;
+    return;
+  }
+  if (!navigator.onLine) {
+    resultEl.innerHTML = `<div class="alert alert-warning">No internet connection.</div>`;
+    return;
+  }
+
+  resultEl.innerHTML = `<div><span class="spinner"></span>Syncing from Streamlit...</div>`;
+  const res = await client.downloadFromStreamlit();
+  resultEl.innerHTML = `<div class="alert ${res.success ? 'alert-success' : 'alert-danger'}">${res.success ? '✅' : '❌'} ${escapeHtml(res.message)}</div>`;
+  if (res.success && res.imported > 0) {
+    showToast('Data synced! Refreshing...');
+    setTimeout(() => location.reload(), 1500);
+  }
+}
+
+// ---- PWA Full Backup ----
 
 async function uploadToCloud() {
   const resultEl = document.getElementById('sync-result');

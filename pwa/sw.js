@@ -3,7 +3,7 @@
  * Cache-first strategy for full offline support.
  */
 
-const CACHE_NAME = 'gmat-tutor-v2';
+const CACHE_NAME = 'gmat-tutor-v3';
 
 const PRECACHE_URLS = [
   './',

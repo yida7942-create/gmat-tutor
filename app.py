@@ -322,13 +322,6 @@ def render_dashboard():
         if type_counts.get('CR', 0) > 0:
             type_options['🧠 CR 逻辑推理'] = 'CR'
         if len(type_options) > 1:
-            type_options = {'📖 RC 阅读理解': 'RC', '🧠 CR 逻辑推理': 'CR', '🔀 混合练习': None, **{}}
-            # Rebuild in order
-            type_options = {}
-            if type_counts.get('RC', 0) > 0:
-                type_options['📖 RC 阅读理解'] = 'RC'
-            if type_counts.get('CR', 0) > 0:
-                type_options['🧠 CR 逻辑推理'] = 'CR'
             type_options['🔀 混合练习'] = None
 
         selected_label = st.radio(
@@ -338,19 +331,36 @@ def render_dashboard():
             key="dash_type_radio"
         )
         selected_subcategory = type_options[selected_label]
-        
-        # Show available count
+
+        # Skill tag selector (only when a specific category is selected)
+        selected_skill_tag = None
         if selected_subcategory:
-            avail = type_counts.get(selected_subcategory, 0)
-            st.caption(f"题库: {avail} 题")
+            skill_tags = st.session_state.db.get_skill_tags_by_subcategory(selected_subcategory)
+            if skill_tags:
+                tag_options = ["全部（随机）"] + skill_tags
+                selected_tag_label = st.selectbox(
+                    "细分题型",
+                    tag_options,
+                    index=0,
+                    key="dash_skill_tag"
+                )
+                if selected_tag_label != "全部（随机）":
+                    selected_skill_tag = selected_tag_label
+                    # Show available count for this skill tag
+                    tag_questions = st.session_state.db.get_questions_by_skill_tag(selected_skill_tag, selected_subcategory, limit=500)
+                    st.caption(f"题库: {len(tag_questions)} 题")
+                else:
+                    avail = type_counts.get(selected_subcategory, 0)
+                    st.caption(f"题库: {avail} 题")
         else:
             st.caption(f"题库: {sum(type_counts.values())} 题")
 
-        question_count = st.selectbox("题目数量", [5, 10, 15, 20], index=1, key="dash_count")
+        question_count = st.number_input("题目数量", min_value=1, max_value=50, value=10, key="dash_count")
         if st.button("🚀 开始练习", use_container_width=True, type="primary"):
             plan = scheduler.generate_daily_plan(
                 question_count=question_count,
-                subcategory=selected_subcategory
+                subcategory=selected_subcategory,
+                skill_tag=selected_skill_tag
             )
             if plan.questions:
                 st.session_state.current_plan = plan
@@ -547,15 +557,38 @@ def render_practice():
                 key="prac_type_radio"
             )
             selected_sub = type_map[selected_label]
+
+            # Skill tag selector (only when a specific category is selected)
+            selected_skill_tag = None
+            if selected_sub:
+                skill_tags = st.session_state.db.get_skill_tags_by_subcategory(selected_sub)
+                if skill_tags:
+                    tag_options = ["全部（随机）"] + skill_tags
+                    selected_tag_label = st.selectbox(
+                        "细分题型",
+                        tag_options,
+                        index=0,
+                        key="prac_skill_tag"
+                    )
+                    if selected_tag_label != "全部（随机）":
+                        selected_skill_tag = selected_tag_label
+                        tag_questions = st.session_state.db.get_questions_by_skill_tag(selected_skill_tag, selected_sub, limit=500)
+                        st.caption(f"题库: {len(tag_questions)} 题")
+                    else:
+                        st.caption(f"题库: {type_counts.get(selected_sub, 0)} 题")
+            else:
+                st.caption(f"题库: {sum(type_counts.values())} 题")
+
         with col2:
-            question_count = st.slider("题目数量", 5, 30, 10, key="prac_count")
+            question_count = st.number_input("题目数量", min_value=1, max_value=50, value=10, key="prac_count")
         with col3:
             st.write("")  # spacing
             st.write("")
             if st.button("▶️ 开始练习", type="primary", use_container_width=True):
                 new_plan = st.session_state.scheduler.generate_daily_plan(
                     question_count=question_count,
-                    subcategory=selected_sub
+                    subcategory=selected_sub,
+                    skill_tag=selected_skill_tag
                 )
                 if new_plan.questions:
                     st.session_state.current_plan = new_plan

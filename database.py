@@ -188,7 +188,38 @@ class DatabaseManager:
             SELECT * FROM questions WHERE subcategory = ? LIMIT ?
         """, (subcategory, limit))
         return [self._row_to_question(row) for row in cursor.fetchall()]
-    
+
+    def get_skill_tags_by_subcategory(self, subcategory: str) -> List[str]:
+        """Get unique skill tags for a specific subcategory (e.g., CR or RC)."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT DISTINCT skill_tags FROM questions WHERE subcategory = ?
+        """, (subcategory,))
+
+        tags_set = set()
+        for row in cursor.fetchall():
+            tags = json.loads(row['skill_tags'])
+            tags_set.update(tags)
+
+        return sorted(list(tags_set))
+
+    def get_questions_by_skill_tag(self, skill_tag: str, subcategory: str = None, limit: int = 50) -> List[Question]:
+        """Get questions that have a specific skill tag."""
+        cursor = self.conn.cursor()
+        if subcategory:
+            cursor.execute("""
+                SELECT * FROM questions
+                WHERE skill_tags LIKE ? AND subcategory = ?
+                LIMIT ?
+            """, (f'%"{skill_tag}"%', subcategory, limit))
+        else:
+            cursor.execute("""
+                SELECT * FROM questions
+                WHERE skill_tags LIKE ?
+                LIMIT ?
+            """, (f'%"{skill_tag}"%', limit))
+        return [self._row_to_question(row) for row in cursor.fetchall()]
+
     def get_all_questions(self) -> List[Question]:
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM questions")

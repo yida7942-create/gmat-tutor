@@ -69,24 +69,35 @@ class Scheduler:
     
     # ============== Main Planning ==============
     
-    def generate_daily_plan(self, 
+    def generate_daily_plan(self,
                            question_count: int = None,
                            time_minutes: int = None,
-                           subcategory: str = None) -> DailyPlan:
+                           subcategory: str = None,
+                           skill_tag: str = None) -> DailyPlan:
         """
         Generate a daily study plan using weighted random sampling.
-        
+
         Priority:
         1. Questions from high-weight (weak) tags
         2. Keep-alive questions from mastered tags
         3. New/unseen questions
+
+        Args:
+            question_count: Number of questions to include
+            time_minutes: Unused, for future time-based planning
+            subcategory: Filter by question type (CR, RC)
+            skill_tag: Filter by specific skill tag (e.g., Boldface, Strengthen)
         """
         target_count = question_count or self.config.default_question_count
-        
-        # Get all data
-        all_questions = self.db.get_all_questions()
-        if subcategory:
-            all_questions = [q for q in all_questions if q.subcategory == subcategory]
+
+        # Get all data - apply filters
+        if skill_tag:
+            # Skill tag specified: use the new method
+            all_questions = self.db.get_questions_by_skill_tag(skill_tag, subcategory, limit=500)
+        elif subcategory:
+            all_questions = [q for q in self.db.get_all_questions() if q.subcategory == subcategory]
+        else:
+            all_questions = self.db.get_all_questions()
         
         weaknesses = {w.tag: w for w in self.db.get_all_weaknesses()}
         

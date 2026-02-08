@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+
+  <title>GMAT Focus AI Tutor</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#4A90D9">
+
+  <!-- iOS PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="GMAT Tutor">
+  <link rel="apple-touch-icon" href="./icons/icon-192.svg">
+
+  <!-- Prevent zoom on input focus (iOS) -->
+  <meta name="format-detection" content="telephone=no">
+
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loading-overlay">
+  <div class="spinner"></div>
+  <p>Loading...</p>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Header -->
+<header class="app-header">
+  <h1>📚 GMAT Focus AI Tutor</h1>
+  <div class="header-status">
+    <span class="status-dot online" id="net-status"></span>
+    <span id="net-label">Online</span>
+    <span class="status-dot ai-off" id="ai-status"></span>
+    <span id="ai-label">AI Off</span>
+  </div>
+</header>
+
+<!-- Pages -->
+<main>
+  <div class="page active" id="page-dashboard"></div>
+  <div class="page" id="page-practice"></div>
+  <div class="page" id="page-progress"></div>
+  <div class="page" id="page-settings"></div>
+</main>
+
+<!-- Bottom Tab Bar -->
+<nav class="tab-bar">
+  <button class="tab-item active" data-page="dashboard">
+    <span class="tab-icon">🏠</span>
+    <span>Dashboard</span>
+  </button>
+  <button class="tab-item" data-page="practice">
+    <span class="tab-icon">📝</span>
+    <span>Practice</span>
+  </button>
+  <button class="tab-item" data-page="progress">
+    <span class="tab-icon">📊</span>
+    <span>Progress</span>
+  </button>
+  <button class="tab-item" data-page="settings">
+    <span class="tab-icon">⚙️</span>
+    <span>Settings</span>
+  </button>
+</nav>
+
+<!-- Scripts (order matters: db first, then others, app last) -->
+<script src="./js/db.js"></script>
+<script src="./js/scheduler.js"></script>
+<script src="./js/tutor.js"></script>
+<script src="./js/sync.js"></script>
+<script src="./js/app.js"></script>
+
+</body>
+</html>

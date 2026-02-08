@@ -108,10 +108,10 @@ def _try_restore_from_cloud() -> bool:
         return False
 
 
-def _auto_sync_to_cloud_task(db_path: str, gist_client):
+def _auto_sync_to_cloud_task(db_path: str, gist_client, db=None):
     """Background task: checkpoint DB and upload to Gist."""
     try:
-        gist_client.upload_db(db_path)
+        gist_client.upload_db(db_path, db=db)
     except Exception:
         pass
 
@@ -136,9 +136,9 @@ def _auto_sync_to_cloud():
         # Run upload in background thread to avoid blocking the UI
         executor = st.session_state.get('ai_executor')
         if executor:
-            executor.submit(_auto_sync_to_cloud_task, database.DB_PATH, gist_client)
+            executor.submit(_auto_sync_to_cloud_task, database.DB_PATH, gist_client, db)
         else:
-            _auto_sync_to_cloud_task(database.DB_PATH, gist_client)
+            _auto_sync_to_cloud_task(database.DB_PATH, gist_client, db)
     except Exception:
         pass
 
@@ -181,6 +181,16 @@ if 'db_initialized' not in st.session_state:
     st.session_state.db_initialized = True
     if imported > 0:
         st.toast(f"✅ 自动导入了 {imported} 道 OG 真题", icon="📚")
+
+    # 3. Check for pending PWA offline logs and import them
+    try:
+        gist_client = get_gist_client()
+        if gist_client:
+            pwa_count, pwa_msg = gist_client.import_pwa_logs(get_db())
+            if pwa_count > 0:
+                st.toast(f"📱 已导入 {pwa_count} 条 PWA 离线记录", icon="📲")
+    except Exception:
+        pass
 
 
 # ============== Session State Init ==============
@@ -1211,7 +1221,7 @@ def render_settings():
                     import database as _db_mod
                     # Checkpoint: flush WAL data into .db file before upload
                     st.session_state.db.checkpoint()
-                    success, msg = gist_client.upload_db(_db_mod.DB_PATH)
+                    success, msg = gist_client.upload_db(_db_mod.DB_PATH, db=st.session_state.db)
                 if success:
                     st.success("✅ 上传成功！")
                 else:

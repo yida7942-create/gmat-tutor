@@ -1223,7 +1223,7 @@ def render_settings():
                     st.session_state.db.checkpoint()
                     success, msg = gist_client.upload_db(_db_mod.DB_PATH, db=st.session_state.db)
                 if success:
-                    st.success("✅ 上传成功！")
+                    st.success(f"✅ {msg}")
                 else:
                     st.error(f"❌ 上传失败: {msg}")
 

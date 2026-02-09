@@ -112,10 +112,12 @@ class GistSync:
             }
 
             # 3. Add JSON export for PWA cross-sync
+            json_exported = False
             if db:
                 json_export = self._build_json_export(db)
                 if json_export:
                     files[JSON_EXPORT_FILENAME] = {"content": json_export}
+                    json_exported = True
 
             payload = {
                 "description": GIST_DESCRIPTION,
@@ -133,7 +135,10 @@ class GistSync:
                 resp = requests.post(f"{GITHUB_API_URL}/gists", headers=self.headers, json=payload)
 
             if resp.status_code in [200, 201]:
-                return True, "Upload successful"
+                msg = "Upload successful"
+                if json_exported:
+                    msg += " (with PWA cross-sync data)"
+                return True, msg
             else:
                 return False, f"GitHub API Error: {resp.status_code} {resp.text}"
 

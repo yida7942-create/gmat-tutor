@@ -162,12 +162,26 @@ class AITutor {
       this.model = (await DB.loadSession('model_name')) || 'doubao-seed-1-6-251015';
       this.baseUrl = await DB.loadSession('base_url');
     } catch (e) { /* ignore */ }
+
+    // Fallback to localStorage if IndexedDB was cleared (iOS PWA update issue)
+    if (!this.apiKey && localStorage.getItem('ai_api_key')) {
+      this.apiKey = localStorage.getItem('ai_api_key');
+      this.model = localStorage.getItem('ai_model') || this.model;
+      this.baseUrl = localStorage.getItem('ai_base_url') || this.baseUrl;
+      // Re-save to IndexedDB
+      await this.saveToDB();
+    }
   }
 
   async saveToDB() {
     if (this.apiKey) await DB.saveSession('api_key', this.apiKey);
     if (this.model) await DB.saveSession('model_name', this.model);
     if (this.baseUrl) await DB.saveSession('base_url', this.baseUrl);
+
+    // Also save to localStorage as backup
+    if (this.apiKey) localStorage.setItem('ai_api_key', this.apiKey);
+    if (this.model) localStorage.setItem('ai_model', this.model);
+    if (this.baseUrl) localStorage.setItem('ai_base_url', this.baseUrl);
   }
 
   isAvailable() {

@@ -55,10 +55,14 @@ class GistSync {
       if (!files[filename]) return null;
 
       const fileInfo = files[filename];
-      if (fileInfo.truncated) {
-        const rawUrl = fileInfo.raw_url;
-        if (!rawUrl) return null;
-        const rawResp = await fetch(rawUrl, { headers: this.headers });
+      if (fileInfo.truncated && fileInfo.raw_url) {
+        // Use minimal headers for raw content URLs
+        let rawResp = await fetch(fileInfo.raw_url, {
+          headers: { 'Authorization': `token ${this.token}` }
+        });
+        if (!rawResp.ok) {
+          rawResp = await fetch(fileInfo.raw_url);
+        }
         if (!rawResp.ok) return null;
         return await rawResp.text();
       }
@@ -93,10 +97,25 @@ class GistSync {
 
       const fileInfo = files[JSON_EXPORT_FILENAME];
       let content;
-      if (fileInfo.truncated) {
-        const rawResp = await fetch(fileInfo.raw_url, { headers: this.headers });
-        if (!rawResp.ok) return { success: false, message: 'Failed to download export file.' };
-        content = await rawResp.text();
+      if (fileInfo.truncated && fileInfo.raw_url) {
+        // For truncated files, fetch raw_url with minimal headers (avoid CORS issues)
+        try {
+          const rawResp = await fetch(fileInfo.raw_url, {
+            headers: { 'Authorization': `token ${this.token}` }
+          });
+          if (!rawResp.ok) {
+            // Fallback: try without auth header (works for some GitHub raw URLs)
+            const rawResp2 = await fetch(fileInfo.raw_url);
+            if (!rawResp2.ok) {
+              return { success: false, message: `Failed to download export file (HTTP ${rawResp.status}). Try again later.` };
+            }
+            content = await rawResp2.text();
+          } else {
+            content = await rawResp.text();
+          }
+        } catch (e) {
+          return { success: false, message: `Network error downloading export: ${e.message}` };
+        }
       } else {
         content = fileInfo.content;
       }

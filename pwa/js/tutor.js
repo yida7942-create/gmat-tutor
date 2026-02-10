@@ -146,14 +146,16 @@ class AITutor {
     this.apiKey = null;
     this.baseUrl = null;
     this.model = null;
+    this.proxyUrl = null;  // Cloudflare Worker proxy URL
     this.maxTokens = 800;
     this.temperature = 0.7;
   }
 
-  configure(apiKey, model, baseUrl) {
+  configure(apiKey, model, baseUrl, proxyUrl) {
     this.apiKey = apiKey || null;
     this.model = model || 'gpt-4o-mini';
     this.baseUrl = baseUrl || null;
+    this.proxyUrl = proxyUrl || null;
   }
 
   async loadFromDB() {
@@ -161,6 +163,7 @@ class AITutor {
       this.apiKey = await DB.loadSession('api_key');
       this.model = (await DB.loadSession('model_name')) || 'doubao-seed-1-6-251015';
       this.baseUrl = await DB.loadSession('base_url');
+      this.proxyUrl = await DB.loadSession('proxy_url');
     } catch (e) { /* ignore */ }
 
     // Fallback to localStorage if IndexedDB was cleared (iOS PWA update issue)
@@ -171,17 +174,22 @@ class AITutor {
       // Re-save to IndexedDB
       await this.saveToDB();
     }
+    if (!this.proxyUrl && localStorage.getItem('ai_proxy_url')) {
+      this.proxyUrl = localStorage.getItem('ai_proxy_url');
+    }
   }
 
   async saveToDB() {
     if (this.apiKey) await DB.saveSession('api_key', this.apiKey);
     if (this.model) await DB.saveSession('model_name', this.model);
     if (this.baseUrl) await DB.saveSession('base_url', this.baseUrl);
+    if (this.proxyUrl) await DB.saveSession('proxy_url', this.proxyUrl);
 
     // Also save to localStorage as backup
     if (this.apiKey) localStorage.setItem('ai_api_key', this.apiKey);
     if (this.model) localStorage.setItem('ai_model', this.model);
     if (this.baseUrl) localStorage.setItem('ai_base_url', this.baseUrl);
+    if (this.proxyUrl) localStorage.setItem('ai_proxy_url', this.proxyUrl);
   }
 
   isAvailable() {
@@ -197,19 +205,44 @@ class AITutor {
     return base.replace(/\/+$/, '') + '/chat/completions';
   }
 
-  async _callAPI(messages, maxTokens, temperature) {
-    const resp = await fetch(this._getEndpoint(), {
-      method: 'POST',
+  _buildFetchArgs(endpoint, body) {
+    // If proxy is configured, route through it
+    if (this.proxyUrl) {
+      const proxyEndpoint = this.proxyUrl.replace(/\/+$/, '');
+      return {
+        url: proxyEndpoint,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`,
+          'X-Target-URL': endpoint,
+        },
+        body,
+      };
+    }
+    // Direct call (works for CORS-friendly APIs like OpenAI)
+    return {
+      url: endpoint,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.apiKey}`,
       },
-      body: JSON.stringify({
-        model: this.model,
-        messages,
-        max_tokens: maxTokens || this.maxTokens,
-        temperature: temperature !== undefined ? temperature : this.temperature,
-      }),
+      body,
+    };
+  }
+
+  async _callAPI(messages, maxTokens, temperature) {
+    const bodyStr = JSON.stringify({
+      model: this.model,
+      messages,
+      max_tokens: maxTokens || this.maxTokens,
+      temperature: temperature !== undefined ? temperature : this.temperature,
+    });
+
+    const args = this._buildFetchArgs(this._getEndpoint(), bodyStr);
+    const resp = await fetch(args.url, {
+      method: 'POST',
+      headers: args.headers,
+      body: args.body,
     });
 
     if (!resp.ok) {
@@ -223,19 +256,19 @@ class AITutor {
 
   // Streaming version
   async *_callAPIStream(messages, maxTokens, temperature) {
-    const resp = await fetch(this._getEndpoint(), {
+    const bodyStr = JSON.stringify({
+      model: this.model,
+      messages,
+      max_tokens: maxTokens || this.maxTokens,
+      temperature: temperature !== undefined ? temperature : this.temperature,
+      stream: true,
+    });
+
+    const args = this._buildFetchArgs(this._getEndpoint(), bodyStr);
+    const resp = await fetch(args.url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages,
-        max_tokens: maxTokens || this.maxTokens,
-        temperature: temperature !== undefined ? temperature : this.temperature,
-        stream: true,
-      }),
+      headers: args.headers,
+      body: args.body,
     });
 
     if (!resp.ok) {

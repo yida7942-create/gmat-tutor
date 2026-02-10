@@ -983,6 +983,11 @@ async function renderSettings() {
       <label>API Base URL</label>
       <input type="text" id="set-base-url" value="${escapeHtml(AppState.tutor.baseUrl || '')}" placeholder="e.g. https://api.deepseek.com">
     </div>
+    <div class="form-group">
+      <label>CORS Proxy URL</label>
+      <input type="text" id="set-proxy-url" value="${escapeHtml(AppState.tutor.proxyUrl || '')}" placeholder="e.g. https://your-worker.workers.dev">
+      <div class="hint">Required for Volcano/DeepSeek etc. Deploy Cloudflare Worker as proxy. Leave empty for OpenAI.</div>
+    </div>
     <button class="btn btn-primary" onclick="saveAndTestAI()">Save & Test Connection</button>
     <div id="ai-test-result" style="margin-top:10px"></div>
   </div>`;
@@ -1111,6 +1116,7 @@ async function saveAndTestAI() {
   const apiKey = document.getElementById('set-api-key').value.trim();
   const model = document.getElementById('set-model').value.trim();
   const baseUrl = document.getElementById('set-base-url').value.trim();
+  const proxyUrl = document.getElementById('set-proxy-url').value.trim();
   const resultEl = document.getElementById('ai-test-result');
 
   // Auto-correct Volcano Coding Plan URL
@@ -1120,7 +1126,7 @@ async function saveAndTestAI() {
     document.getElementById('set-base-url').value = correctedBaseUrl;
   }
 
-  AppState.tutor.configure(apiKey, model, correctedBaseUrl);
+  AppState.tutor.configure(apiKey, model, correctedBaseUrl, proxyUrl);
   await AppState.tutor.saveToDB();
   updateStatusIndicators();
 

@@ -79,9 +79,30 @@ class GistSync {
       const gistId = await this._findExistingGist();
       if (!gistId) return { success: false, message: 'No cloud data found. Upload from Streamlit first.' };
 
-      const content = await this._getGistFile(gistId, JSON_EXPORT_FILENAME);
+      // Fetch gist details to check what files exist
+      const gistResp = await fetch(`${GITHUB_API_URL}/gists/${gistId}`, { headers: this.headers });
+      if (!gistResp.ok) return { success: false, message: `Failed to fetch Gist (HTTP ${gistResp.status})` };
+
+      const gistData = await gistResp.json();
+      const files = gistData.files || {};
+      const fileNames = Object.keys(files);
+
+      if (!files[JSON_EXPORT_FILENAME]) {
+        return { success: false, message: `Gist found (${gistId.substring(0, 8)}...) but missing export file. Files: [${fileNames.join(', ')}]. Please upload from Streamlit with updated code.` };
+      }
+
+      const fileInfo = files[JSON_EXPORT_FILENAME];
+      let content;
+      if (fileInfo.truncated) {
+        const rawResp = await fetch(fileInfo.raw_url, { headers: this.headers });
+        if (!rawResp.ok) return { success: false, message: 'Failed to download export file.' };
+        content = await rawResp.text();
+      } else {
+        content = fileInfo.content;
+      }
+
       if (!content) {
-        return { success: false, message: 'No Streamlit export found. Please sync from Streamlit first.' };
+        return { success: false, message: 'Export file is empty.' };
       }
 
       const exported = JSON.parse(content);

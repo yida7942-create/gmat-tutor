@@ -38,7 +38,7 @@ def check_password():
         return True
 
     def password_entered():
-        if st.session_state["password"] == st.secrets["password"]:
+        if st.session_state.get("password") == st.secrets["password"]:
             st.session_state["password_correct"] = True
             del st.session_state["password"]  # don't store password
         else:

@@ -115,14 +115,17 @@ class Scheduler:
         
         selected_questions = []
         selected_ids = set()
-        
+
+        # Build recent-correct set: questions answered correctly in last 3 days
+        recent_correct_ids = self._get_recent_correct_ids(days=3)
+
         # Step 1: Select questions from weak areas (weighted random)
         weak_questions = self._weighted_sample(
-            all_questions, weaknesses, weakness_count, selected_ids
+            all_questions, weaknesses, weakness_count, selected_ids, recent_correct_ids
         )
         selected_questions.extend(weak_questions)
         selected_ids.update(q.id for q in weak_questions)
-        
+
         # Step 2: Add keep-alive questions from mastered areas
         mastered_tags = [tag for tag, w in weaknesses.items() if w.weight < 1.0]
         if mastered_tags:
@@ -131,12 +134,15 @@ class Scheduler:
             )
             selected_questions.extend(keep_alive_questions)
             selected_ids.update(q.id for q in keep_alive_questions)
-        
-        # Step 3: Fill remaining slots with random questions if needed
+
+        # Step 3: Fill remaining slots (prefer not-recently-correct questions)
         remaining = target_count - len(selected_questions)
         if remaining > 0:
             available = [q for q in all_questions if q.id not in selected_ids]
-            fill_questions = random.sample(available, min(remaining, len(available)))
+            not_recent = [q for q in available if q.id not in recent_correct_ids]
+            recent = [q for q in available if q.id in recent_correct_ids]
+            pool = not_recent + recent
+            fill_questions = pool[:remaining]
             selected_questions.extend(fill_questions)
         
         # Step 4: Shuffle to avoid clustering, but respect max consecutive rule
@@ -155,16 +161,37 @@ class Scheduler:
             created_at=datetime.now().isoformat()
         )
     
-    def _weighted_sample(self, 
-                        questions: List[Question], 
+    def _get_recent_correct_ids(self, days: int = 3) -> set:
+        """Get IDs of questions answered correctly in the last N days."""
+        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+        all_logs = self.db.get_study_logs(limit=10000)
+        correct_ids = set()
+        incorrect_ids = set()
+
+        # Process in chronological order to get latest result per question
+        sorted_logs = sorted(all_logs, key=lambda l: l.timestamp)
+        for log in sorted_logs:
+            if log.timestamp <= cutoff:
+                continue
+            if log.is_correct:
+                correct_ids.add(log.question_id)
+                incorrect_ids.discard(log.question_id)
+            else:
+                incorrect_ids.add(log.question_id)
+                correct_ids.discard(log.question_id)
+        return correct_ids
+
+    def _weighted_sample(self,
+                        questions: List[Question],
                         weaknesses: Dict[str, UserWeakness],
                         count: int,
-                        exclude_ids: set) -> List[Question]:
+                        exclude_ids: set,
+                        recent_correct_ids: set = None) -> List[Question]:
         """Sample questions with probability proportional to weakness weight."""
         available = [q for q in questions if q.id not in exclude_ids]
         if not available:
             return []
-        
+
         # Calculate weights for each question
         weights = []
         for q in available:
@@ -173,6 +200,9 @@ class Scheduler:
                 (weaknesses[tag].weight if tag in weaknesses else 1.0)
                 for tag in q.skill_tags
             ) if q.skill_tags else 1.0
+            # Deprioritize questions answered correctly in recent days
+            if recent_correct_ids and q.id in recent_correct_ids:
+                q_weight *= 0.1
             weights.append(q_weight)
         
         # Normalize weights

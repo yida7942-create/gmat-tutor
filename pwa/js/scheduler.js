@@ -38,30 +38,31 @@ class Scheduler {
       return { questions: [], estimatedTime: 0, focusTags: [], createdAt: new Date().toISOString() };
     }
 
-    const keepAliveCount = Math.max(1, Math.floor(targetCount * this.config.keepAliveQuota));
-    const weaknessCount = targetCount - keepAliveCount;
+    // Get all attempted question IDs to exclude them
+    const attemptedIds = await this._getAttemptedIds();
+
+    // Split into unseen and seen questions
+    const unseenQuestions = allQuestions.filter(q => !attemptedIds.has(q.id));
+    const seenQuestions = allQuestions.filter(q => attemptedIds.has(q.id));
+
     const selectedIds = new Set();
     let selected = [];
 
-    // Step 1: Weighted sample from weak areas
-    const weakQ = this._weightedSample(allQuestions, weaknesses, weaknessCount, selectedIds);
-    selected = selected.concat(weakQ);
-    weakQ.forEach(q => selectedIds.add(q.id));
+    if (unseenQuestions.length >= targetCount) {
+      // Enough unseen questions: use only unseen, weighted by weakness
+      const weakQ = this._weightedSample(unseenQuestions, weaknesses, targetCount, selectedIds);
+      selected = selected.concat(weakQ);
+    } else {
+      // Not enough unseen: use all unseen + fill from seen (prioritize incorrect)
+      selected = selected.concat(unseenQuestions);
+      unseenQuestions.forEach(q => selectedIds.add(q.id));
 
-    // Step 2: Keep-alive from mastered areas
-    const masteredTags = Object.keys(weaknesses).filter(t => weaknesses[t].weight < 1.0);
-    if (masteredTags.length) {
-      const keepAlive = this._sampleFromTags(allQuestions, masteredTags, keepAliveCount, selectedIds);
-      selected = selected.concat(keepAlive);
-      keepAlive.forEach(q => selectedIds.add(q.id));
-    }
-
-    // Step 3: Fill remaining
-    const remaining = targetCount - selected.length;
-    if (remaining > 0) {
-      const available = allQuestions.filter(q => !selectedIds.has(q.id));
-      const fill = this._randomSample(available, remaining);
-      selected = selected.concat(fill);
+      const remaining = targetCount - selected.length;
+      if (remaining > 0) {
+        // Fill from seen questions, weighted by weakness (incorrect ones have higher weight)
+        const fill = this._weightedSample(seenQuestions, weaknesses, remaining, selectedIds);
+        selected = selected.concat(fill);
+      }
     }
 
     // Step 4: Shuffle with constraints
@@ -75,6 +76,15 @@ class Scheduler {
       focusTags,
       createdAt: new Date().toISOString(),
     };
+  }
+
+  async _getAttemptedIds() {
+    const allLogs = await DB.getAllStudyLogs();
+    const ids = new Set();
+    for (const log of allLogs) {
+      ids.add(log.question_id);
+    }
+    return ids;
   }
 
   _weightedSample(questions, weaknesses, count, excludeIds) {

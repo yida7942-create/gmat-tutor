@@ -115,29 +115,30 @@ class Scheduler:
         
         selected_questions = []
         selected_ids = set()
-        
-        # Step 1: Select questions from weak areas (weighted random)
-        weak_questions = self._weighted_sample(
-            all_questions, weaknesses, weakness_count, selected_ids
-        )
-        selected_questions.extend(weak_questions)
-        selected_ids.update(q.id for q in weak_questions)
-        
-        # Step 2: Add keep-alive questions from mastered areas
-        mastered_tags = [tag for tag, w in weaknesses.items() if w.weight < 1.0]
-        if mastered_tags:
-            keep_alive_questions = self._sample_from_tags(
-                all_questions, mastered_tags, keep_alive_count, selected_ids
+
+        # Get all attempted question IDs to exclude them
+        attempted_ids = self._get_attempted_ids()
+
+        # Split into unseen and seen questions
+        unseen_questions = [q for q in all_questions if q.id not in attempted_ids]
+        seen_questions = [q for q in all_questions if q.id in attempted_ids]
+
+        if len(unseen_questions) >= target_count:
+            # Enough unseen questions: use only unseen, weighted by weakness
+            selected_questions = self._weighted_sample(
+                unseen_questions, weaknesses, target_count, selected_ids
             )
-            selected_questions.extend(keep_alive_questions)
-            selected_ids.update(q.id for q in keep_alive_questions)
-        
-        # Step 3: Fill remaining slots with random questions if needed
-        remaining = target_count - len(selected_questions)
-        if remaining > 0:
-            available = [q for q in all_questions if q.id not in selected_ids]
-            fill_questions = random.sample(available, min(remaining, len(available)))
-            selected_questions.extend(fill_questions)
+        else:
+            # Not enough unseen: use all unseen + fill from seen (incorrect ones have higher weight)
+            selected_questions = list(unseen_questions)
+            selected_ids.update(q.id for q in selected_questions)
+
+            remaining = target_count - len(selected_questions)
+            if remaining > 0:
+                fill = self._weighted_sample(
+                    seen_questions, weaknesses, remaining, selected_ids
+                )
+                selected_questions.extend(fill)
         
         # Step 4: Shuffle to avoid clustering, but respect max consecutive rule
         selected_questions = self._shuffle_with_constraints(selected_questions)
@@ -155,8 +156,13 @@ class Scheduler:
             created_at=datetime.now().isoformat()
         )
     
-    def _weighted_sample(self, 
-                        questions: List[Question], 
+    def _get_attempted_ids(self) -> set:
+        """Get IDs of all questions that have been attempted."""
+        all_logs = self.db.get_study_logs(limit=10000)
+        return {log.question_id for log in all_logs}
+
+    def _weighted_sample(self,
+                        questions: List[Question],
                         weaknesses: Dict[str, UserWeakness],
                         count: int,
                         exclude_ids: set) -> List[Question]:
@@ -164,7 +170,7 @@ class Scheduler:
         available = [q for q in questions if q.id not in exclude_ids]
         if not available:
             return []
-        
+
         # Calculate weights for each question
         weights = []
         for q in available:

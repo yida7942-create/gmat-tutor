@@ -38,37 +38,31 @@ class Scheduler {
       return { questions: [], estimatedTime: 0, focusTags: [], createdAt: new Date().toISOString() };
     }
 
-    // Build recent-correct set: questions answered correctly in last 3 days
-    const recentCorrectIds = await this._getRecentCorrectIds(3);
+    // Get all attempted question IDs to exclude them
+    const attemptedIds = await this._getAttemptedIds();
 
-    const keepAliveCount = Math.max(1, Math.floor(targetCount * this.config.keepAliveQuota));
-    const weaknessCount = targetCount - keepAliveCount;
+    // Split into unseen and seen questions
+    const unseenQuestions = allQuestions.filter(q => !attemptedIds.has(q.id));
+    const seenQuestions = allQuestions.filter(q => attemptedIds.has(q.id));
+
     const selectedIds = new Set();
     let selected = [];
 
-    // Step 1: Weighted sample from weak areas (deprioritize recent correct)
-    const weakQ = this._weightedSample(allQuestions, weaknesses, weaknessCount, selectedIds, recentCorrectIds);
-    selected = selected.concat(weakQ);
-    weakQ.forEach(q => selectedIds.add(q.id));
+    if (unseenQuestions.length >= targetCount) {
+      // Enough unseen questions: use only unseen, weighted by weakness
+      const weakQ = this._weightedSample(unseenQuestions, weaknesses, targetCount, selectedIds);
+      selected = selected.concat(weakQ);
+    } else {
+      // Not enough unseen: use all unseen + fill from seen (prioritize incorrect)
+      selected = selected.concat(unseenQuestions);
+      unseenQuestions.forEach(q => selectedIds.add(q.id));
 
-    // Step 2: Keep-alive from mastered areas
-    const masteredTags = Object.keys(weaknesses).filter(t => weaknesses[t].weight < 1.0);
-    if (masteredTags.length) {
-      const keepAlive = this._sampleFromTags(allQuestions, masteredTags, keepAliveCount, selectedIds);
-      selected = selected.concat(keepAlive);
-      keepAlive.forEach(q => selectedIds.add(q.id));
-    }
-
-    // Step 3: Fill remaining (prefer unseen questions)
-    const remaining = targetCount - selected.length;
-    if (remaining > 0) {
-      const available = allQuestions.filter(q => !selectedIds.has(q.id));
-      // Prioritize questions not recently answered correctly
-      const notRecent = available.filter(q => !recentCorrectIds.has(q.id));
-      const recent = available.filter(q => recentCorrectIds.has(q.id));
-      const pool = notRecent.concat(recent);
-      const fill = pool.slice(0, remaining);
-      selected = selected.concat(fill);
+      const remaining = targetCount - selected.length;
+      if (remaining > 0) {
+        // Fill from seen questions, weighted by weakness (incorrect ones have higher weight)
+        const fill = this._weightedSample(seenQuestions, weaknesses, remaining, selectedIds);
+        selected = selected.concat(fill);
+      }
     }
 
     // Step 4: Shuffle with constraints
@@ -84,41 +78,22 @@ class Scheduler {
     };
   }
 
-  async _getRecentCorrectIds(days) {
-    const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+  async _getAttemptedIds() {
     const allLogs = await DB.getAllStudyLogs();
-    const correctIds = new Set();
-    const incorrectIds = new Set();
-
-    // Process logs in chronological order to get the latest result per question
-    const sorted = allLogs.slice().sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-    for (const log of sorted) {
-      if (log.timestamp <= cutoff) continue;
-      if (log.is_correct) {
-        correctIds.add(log.question_id);
-        incorrectIds.delete(log.question_id);
-      } else {
-        incorrectIds.add(log.question_id);
-        correctIds.delete(log.question_id);
-      }
+    const ids = new Set();
+    for (const log of allLogs) {
+      ids.add(log.question_id);
     }
-    return correctIds;
+    return ids;
   }
 
-  _weightedSample(questions, weaknesses, count, excludeIds, recentCorrectIds) {
+  _weightedSample(questions, weaknesses, count, excludeIds) {
     let available = questions.filter(q => !excludeIds.has(q.id));
     if (!available.length) return [];
 
     const weights = available.map(q => {
-      let w = 1.0;
-      if (q.skill_tags && q.skill_tags.length) {
-        w = Math.max(...q.skill_tags.map(t => (weaknesses[t] ? weaknesses[t].weight : 1.0)));
-      }
-      // Deprioritize questions answered correctly in recent days
-      if (recentCorrectIds && recentCorrectIds.has(q.id)) {
-        w *= 0.1; // 10x less likely to appear
-      }
-      return w;
+      if (!q.skill_tags || !q.skill_tags.length) return 1.0;
+      return Math.max(...q.skill_tags.map(t => (weaknesses[t] ? weaknesses[t].weight : 1.0)));
     });
 
     const totalWeight = weights.reduce((s, w) => s + w, 0) || available.length;

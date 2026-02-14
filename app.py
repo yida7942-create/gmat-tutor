@@ -638,14 +638,54 @@ def render_practice():
     tags_str = " | ".join([f"`{tag}`" for tag in current_q.skill_tags])
     st.caption(f"**{type_label}** | **考点:** {tags_str} | **难度:** {'⭐' * current_q.difficulty}")
 
-    # Question content
-    st.markdown(current_q.content)
+    # Question content - separate passage and question stem for RC
+    if current_q.subcategory == "RC":
+        _render_rc_content(current_q)
+    else:
+        st.markdown(current_q.content)
     st.markdown("---")
 
     if not st.session_state.show_result:
         render_question_options(current_q)
     else:
         render_result_view(current_q)
+
+
+def _render_rc_content(question):
+    """Render RC question with passage in an expander and question stem separately."""
+    # Try to extract question_stem from the JSON source
+    stem = None
+    try:
+        import json as _json
+        with open("og_questions.json", "r", encoding="utf-8") as f:
+            all_q = _json.load(f)
+        for q in all_q:
+            if q.get("og_number") and question.content.endswith(q.get("question_stem", "")[-30:]):
+                stem = q.get("question_stem")
+                break
+    except Exception:
+        pass
+
+    # Fallback: try to split on common RC patterns
+    if not stem:
+        # Common patterns where the question starts
+        for marker in [
+            "\n\nAccording to ",  "\n\nWhich of the following ",
+            "\n\nThe passage ", "\n\nThe author ", "\n\nIt can be inferred ",
+            "\n\nThe primary purpose ", "\n\nWhat is the ", "\n\nIn the passage",
+        ]:
+            if marker in question.content:
+                idx = question.content.index(marker)
+                stem = question.content[idx:].strip()
+                break
+
+    if stem and stem in question.content:
+        passage = question.content[:question.content.index(stem)].strip()
+        with st.expander("📖 阅读文章 (点击展开/收起)", expanded=True):
+            st.markdown(passage)
+        st.markdown(f"**{stem}**")
+    else:
+        st.markdown(question.content)
 
 
 def render_question_options(question: Question):

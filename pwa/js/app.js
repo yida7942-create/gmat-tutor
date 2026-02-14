@@ -30,11 +30,16 @@ async function initApp() {
   // Try auto-restore from cloud if local DB has no study history
   await tryRestoreFromCloud();
 
-  // Load question bank if empty
+  // Load question bank if empty or missing question_stem (migration)
   const allQ = await DB.getAllQuestions();
-  if (allQ.length === 0) {
+  const needsReimport = allQ.length === 0 || (allQ.length > 0 && !allQ[0].question_stem);
+  if (needsReimport) {
     showLoading('Importing questions...');
     try {
+      if (allQ.length > 0) {
+        // Clear old questions without question_stem
+        await DB.clearQuestions();
+      }
       const resp = await fetch('./data/og_questions.json');
       const data = await resp.json();
       await DB.importQuestionsFromJSON(data);
@@ -538,8 +543,19 @@ async function renderPractice() {
   (q.skill_tags || []).forEach(t => { html += `<span class="tag tag-skill">${t}</span>`; });
   html += `<span class="tag tag-diff">${'★'.repeat(q.difficulty || 3)}</span></div>`;
 
-  // Question content
-  html += `<div class="question-content">${escapeHtml(q.content)}</div>`;
+  // Question content - handle RC passage separately
+  if (q.subcategory === 'RC' && q.question_stem && q.content.includes(q.question_stem)) {
+    const passageText = q.content.substring(0, q.content.indexOf(q.question_stem)).trim();
+    if (passageText) {
+      html += `<div class="rc-passage">
+        <div class="rc-passage-header">📖 Passage</div>
+        <div class="rc-passage-body">${escapeHtml(passageText)}</div>
+      </div>`;
+    }
+    html += `<div class="question-stem">${escapeHtml(q.question_stem)}</div>`;
+  } else {
+    html += `<div class="question-content">${escapeHtml(q.content)}</div>`;
+  }
 
   if (!AppState.showResult) {
     // Show options

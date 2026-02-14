@@ -331,6 +331,45 @@ body {
   white-space: pre-wrap;
 }
 
+/* RC Passage */
+.rc-passage {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  max-height: 300px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.rc-passage-header {
+  position: sticky;
+  top: 0;
+  background: var(--background);
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  z-index: 1;
+}
+
+.rc-passage-body {
+  padding: 12px;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  color: var(--text-primary);
+}
+
+.question-stem {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin-bottom: 16px;
+  font-weight: 600;
+  padding: 10px 0;
+}
+
 /* ============== Result ============== */
 
 .result-banner {

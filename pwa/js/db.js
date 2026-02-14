@@ -344,6 +344,7 @@ async function importQuestionsFromJSON(jsonData) {
     category: q.category || 'Verbal',
     subcategory: q.subcategory || 'CR',
     content: q.content,
+    question_stem: q.question_stem || '',
     options: q.options,
     correct_answer: q.correct_answer,
     skill_tags: q.skill_tags,
@@ -429,6 +430,16 @@ async function importAllData(data) {
   }
 }
 
+async function clearQuestions() {
+  const db = await openDB();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction('questions', 'readwrite');
+    tx.objectStore('questions').clear();
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 async function resetDatabase() {
   const db = await openDB();
   const storeNames = ['study_logs', 'user_weaknesses', 'session_store'];
@@ -468,6 +479,7 @@ window.DB = {
   loadSession,
   deleteSession,
   clearSession,
+  clearQuestions,
   importQuestionsFromJSON,
   exportAllData,
   importAllData,

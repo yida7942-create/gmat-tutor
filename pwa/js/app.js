@@ -546,13 +546,42 @@ async function renderPractice() {
   // Question content - handle RC passage separately
   if (q.subcategory === 'RC' && q.question_stem && q.content.includes(q.question_stem)) {
     const passageText = q.content.substring(0, q.content.indexOf(q.question_stem)).trim();
+    const passageKey = passageText.substring(0, 100);
+
+    // Check if this is the same passage as the previous question
+    const prevIdx = AppState.currentQuestionIdx - 1;
+    let samePassage = false;
+    if (prevIdx >= 0) {
+      const prevQ = AppState.currentPlan.questions[prevIdx];
+      if (prevQ.subcategory === 'RC' && prevQ.question_stem && prevQ.content.includes(prevQ.question_stem)) {
+        const prevPassage = prevQ.content.substring(0, prevQ.content.indexOf(prevQ.question_stem)).trim();
+        samePassage = prevPassage.substring(0, 100) === passageKey;
+      }
+    }
+
+    // Count how many questions share this passage in the current plan
+    let passageQNum = 1;
+    let passageQTotal = 0;
+    for (const pq of AppState.currentPlan.questions) {
+      if (pq.subcategory === 'RC' && pq.question_stem && pq.content.includes(pq.question_stem)) {
+        const pText = pq.content.substring(0, pq.content.indexOf(pq.question_stem)).trim();
+        if (pText.substring(0, 100) === passageKey) {
+          passageQTotal++;
+          if (pq === q) passageQNum = passageQTotal;
+        }
+      }
+    }
+
     if (passageText) {
-      html += `<div class="rc-passage">
-        <div class="rc-passage-header">📖 Passage</div>
+      const collapseLabel = samePassage ? '📖 Passage (same as above)' : '📖 Passage';
+      html += `<div class="rc-passage${samePassage ? ' rc-passage-collapsed' : ''}">
+        <div class="rc-passage-header" onclick="this.parentElement.classList.toggle('rc-passage-collapsed')">${collapseLabel}</div>
         <div class="rc-passage-body">${escapeHtml(passageText)}</div>
       </div>`;
     }
-    html += `<div class="question-stem">${escapeHtml(q.question_stem)}</div>`;
+
+    const qLabel = passageQTotal > 1 ? ` (Question ${passageQNum}/${passageQTotal} for this passage)` : '';
+    html += `<div class="question-stem">${escapeHtml(q.question_stem)}${qLabel}</div>`;
   } else {
     html += `<div class="question-content">${escapeHtml(q.content)}</div>`;
   }

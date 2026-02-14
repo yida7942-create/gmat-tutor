@@ -38,35 +38,61 @@ class Scheduler {
       return { questions: [], estimatedTime: 0, focusTags: [], createdAt: new Date().toISOString() };
     }
 
-    // Get all attempted question IDs to exclude them
     const attemptedIds = await this._getAttemptedIds();
 
-    // Split into unseen and seen questions
-    const unseenQuestions = allQuestions.filter(q => !attemptedIds.has(q.id));
-    const seenQuestions = allQuestions.filter(q => attemptedIds.has(q.id));
+    // Separate RC and non-RC questions
+    const rcQuestions = allQuestions.filter(q => q.subcategory === 'RC');
+    const nonRcQuestions = allQuestions.filter(q => q.subcategory !== 'RC');
 
-    const selectedIds = new Set();
     let selected = [];
+    const selectedIds = new Set();
 
-    if (unseenQuestions.length >= targetCount) {
-      // Enough unseen questions: use only unseen, weighted by weakness
-      const weakQ = this._weightedSample(unseenQuestions, weaknesses, targetCount, selectedIds);
-      selected = selected.concat(weakQ);
+    if (rcQuestions.length > 0 && nonRcQuestions.length === 0) {
+      // Pure RC mode: select by passage groups
+      selected = this._selectRCByPassage(rcQuestions, weaknesses, targetCount, attemptedIds);
+    } else if (rcQuestions.length > 0) {
+      // Mixed mode: select non-RC individually, then add RC passages
+      const unseenNonRc = nonRcQuestions.filter(q => !attemptedIds.has(q.id));
+      const seenNonRc = nonRcQuestions.filter(q => attemptedIds.has(q.id));
+
+      // Fill most of the plan with non-RC
+      const nonRcCount = Math.min(targetCount, nonRcQuestions.length);
+      if (unseenNonRc.length >= nonRcCount) {
+        selected = this._weightedSample(unseenNonRc, weaknesses, nonRcCount, selectedIds);
+      } else {
+        selected = selected.concat(unseenNonRc);
+        unseenNonRc.forEach(q => selectedIds.add(q.id));
+        const remaining = nonRcCount - selected.length;
+        if (remaining > 0) {
+          selected = selected.concat(this._weightedSample(seenNonRc, weaknesses, remaining, selectedIds));
+        }
+      }
+
+      // Add RC passage groups for remaining
+      const rcRemaining = targetCount - selected.length;
+      if (rcRemaining > 0) {
+        const rcSelected = this._selectRCByPassage(rcQuestions, weaknesses, rcRemaining, attemptedIds);
+        selected = selected.concat(rcSelected);
+      }
     } else {
-      // Not enough unseen: use all unseen + fill from seen (prioritize incorrect)
-      selected = selected.concat(unseenQuestions);
-      unseenQuestions.forEach(q => selectedIds.add(q.id));
+      // No RC: original logic
+      const unseen = allQuestions.filter(q => !attemptedIds.has(q.id));
+      const seen = allQuestions.filter(q => attemptedIds.has(q.id));
 
-      const remaining = targetCount - selected.length;
-      if (remaining > 0) {
-        // Fill from seen questions, weighted by weakness (incorrect ones have higher weight)
-        const fill = this._weightedSample(seenQuestions, weaknesses, remaining, selectedIds);
-        selected = selected.concat(fill);
+      if (unseen.length >= targetCount) {
+        selected = this._weightedSample(unseen, weaknesses, targetCount, selectedIds);
+      } else {
+        selected = selected.concat(unseen);
+        unseen.forEach(q => selectedIds.add(q.id));
+        const remaining = targetCount - selected.length;
+        if (remaining > 0) {
+          selected = selected.concat(this._weightedSample(seen, weaknesses, remaining, selectedIds));
+        }
       }
     }
 
-    // Step 4: Shuffle with constraints
-    selected = this._shuffleWithConstraints(selected);
+    // Shuffle non-RC questions but keep RC passage groups together
+    selected = this._shuffleKeepingRCGroups(selected);
 
     const focusTags = this._getTopWeaknessTags(weaknesses, 3);
 
@@ -76,6 +102,100 @@ class Scheduler {
       focusTags,
       createdAt: new Date().toISOString(),
     };
+  }
+
+  _getPassageKey(question) {
+    if (question.subcategory !== 'RC') return null;
+    const stem = question.question_stem || '';
+    const content = question.content || '';
+    if (stem && content.includes(stem)) {
+      return content.substring(0, content.indexOf(stem)).trim().substring(0, 100);
+    }
+    return content.substring(0, 100);
+  }
+
+  _selectRCByPassage(rcQuestions, weaknesses, targetCount, attemptedIds) {
+    // Group by passage
+    const passageGroups = {};
+    for (const q of rcQuestions) {
+      const key = this._getPassageKey(q);
+      if (!passageGroups[key]) passageGroups[key] = [];
+      passageGroups[key].push(q);
+    }
+
+    // For each passage group, check if any questions are unseen
+    const passageList = Object.values(passageGroups);
+    const unseenPassages = passageList.filter(group =>
+      group.some(q => !attemptedIds.has(q.id))
+    );
+    const seenPassages = passageList.filter(group =>
+      group.every(q => attemptedIds.has(q.id))
+    );
+
+    // Select passages, prefer ones with unseen questions
+    let selected = [];
+    const pool = unseenPassages.concat(seenPassages);
+
+    for (const group of pool) {
+      if (selected.length >= targetCount) break;
+      // Add all questions from this passage group
+      selected = selected.concat(group);
+    }
+
+    return selected;
+  }
+
+  _shuffleKeepingRCGroups(questions) {
+    // Separate into RC passage groups and non-RC individual questions
+    const rcGroups = [];
+    const nonRc = [];
+    const seenPassages = new Set();
+
+    for (const q of questions) {
+      if (q.subcategory === 'RC') {
+        const key = this._getPassageKey(q);
+        if (!seenPassages.has(key)) {
+          seenPassages.add(key);
+          // Collect all questions from this passage in order
+          const group = questions.filter(qq => qq.subcategory === 'RC' && this._getPassageKey(qq) === key);
+          rcGroups.push(group);
+        }
+      } else {
+        nonRc.push(q);
+      }
+    }
+
+    // Shuffle non-RC
+    for (let i = nonRc.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [nonRc[i], nonRc[j]] = [nonRc[j], nonRc[i]];
+    }
+
+    // Shuffle passage group order (but keep questions within a group in order)
+    for (let i = rcGroups.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [rcGroups[i], rcGroups[j]] = [rcGroups[j], rcGroups[i]];
+    }
+
+    // Interleave: put RC groups between non-RC questions
+    const result = [];
+    let rcIdx = 0;
+    const insertInterval = nonRc.length > 0 ? Math.max(1, Math.floor(nonRc.length / (rcGroups.length + 1))) : 0;
+
+    for (let i = 0; i < nonRc.length; i++) {
+      result.push(nonRc[i]);
+      if (insertInterval > 0 && (i + 1) % insertInterval === 0 && rcIdx < rcGroups.length) {
+        result.push(...rcGroups[rcIdx]);
+        rcIdx++;
+      }
+    }
+    // Append remaining RC groups
+    while (rcIdx < rcGroups.length) {
+      result.push(...rcGroups[rcIdx]);
+      rcIdx++;
+    }
+
+    return result;
   }
 
   async _getAttemptedIds() {

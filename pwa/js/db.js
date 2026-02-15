@@ -339,17 +339,50 @@ async function importQuestionsFromJSON(jsonData) {
   const existing = await getAllQuestions();
   if (existing.length > 0) return 0;
 
-  const questions = jsonData.map(q => ({
-    passage_id: null,
-    category: q.category || 'Verbal',
-    subcategory: q.subcategory || 'CR',
-    content: q.content,
-    options: q.options,
-    correct_answer: q.correct_answer,
-    skill_tags: q.skill_tags,
-    difficulty: q.difficulty || 3,
-    explanation: q.explanation || '',
-  }));
+  // Generate passage_id for RC questions based on stimulus text
+  const passageMap = {};
+  let passageCounter = 0;
+  jsonData.forEach(q => {
+    if (q.subcategory === 'RC' && q.stimulus) {
+      const key = q.stimulus.trim().substring(0, 200);
+      if (!(key in passageMap)) {
+        passageCounter++;
+        passageMap[key] = passageCounter;
+      }
+    }
+  });
+
+  const questions = jsonData.map(q => {
+    let passageId = null;
+    if (q.subcategory === 'RC' && q.stimulus) {
+      const key = q.stimulus.trim().substring(0, 200);
+      passageId = passageMap[key] || null;
+    }
+    // Disambiguate shared tags between RC and CR (e.g. "Inference" exists in both)
+    const sub = q.subcategory || 'CR';
+    const SHARED_TAGS = ['Inference'];
+    const skillTags = (q.skill_tags || []).map(tag => {
+      if (SHARED_TAGS.includes(tag)) {
+        return sub === 'RC' ? `RC-${tag}` : `CR-${tag}`;
+      }
+      return tag;
+    });
+
+    return {
+      passage_id: passageId,
+      category: q.category || 'Verbal',
+      subcategory: sub,
+      content: q.content,
+      stimulus: q.stimulus || '',
+      question_stem: q.question_stem || '',
+      options: q.options,
+      correct_answer: q.correct_answer,
+      skill_tags: skillTags,
+      difficulty: q.difficulty || 3,
+      difficulty_label: q.difficulty_label || '',
+      explanation: q.explanation || '',
+    };
+  });
 
   return addQuestionsBulk(questions);
 }
@@ -429,6 +462,16 @@ async function importAllData(data) {
   }
 }
 
+async function clearQuestions() {
+  const db = await openDB();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction('questions', 'readwrite');
+    tx.objectStore('questions').clear();
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 async function resetDatabase() {
   const db = await openDB();
   const storeNames = ['study_logs', 'user_weaknesses', 'session_store'];
@@ -468,6 +511,7 @@ window.DB = {
   loadSession,
   deleteSession,
   clearSession,
+  clearQuestions,
   importQuestionsFromJSON,
   exportAllData,
   importAllData,

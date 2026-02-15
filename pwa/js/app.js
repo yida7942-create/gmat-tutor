@@ -18,6 +18,8 @@ const AppState = {
   lastAnswer: null,
   // AI cache
   aiCache: {},
+  // Timer
+  timerInterval: null,
 };
 
 // ============== Initialization ==============
@@ -30,11 +32,16 @@ async function initApp() {
   // Try auto-restore from cloud if local DB has no study history
   await tryRestoreFromCloud();
 
-  // Load question bank if empty
+  // Load question bank if empty or missing question_stem (migration)
   const allQ = await DB.getAllQuestions();
-  if (allQ.length === 0) {
+  const needsReimport = allQ.length === 0 || (allQ.length > 0 && (!allQ[0].question_stem || !allQ[0].stimulus));
+  if (needsReimport) {
     showLoading('Importing questions...');
     try {
+      if (allQ.length > 0) {
+        // Clear old questions without question_stem
+        await DB.clearQuestions();
+      }
       const resp = await fetch('./data/og_questions.json');
       const data = await resp.json();
       await DB.importQuestionsFromJSON(data);
@@ -531,15 +538,70 @@ async function renderPractice() {
     <div class="progress-text">Question ${idx + 1} / ${total}</div>
   </div>`;
 
+  // Question timer (GMAT pacing: ~2 min/question)
+  if (!AppState.showResult) {
+    html += `<div class="question-timer">
+      <span class="timer-elapsed" id="q-timer">0:00</span>
+      <span class="timer-pace" id="q-pace">Target: 2:00</span>
+    </div>`;
+  }
+
   // Question metadata
   const typeLabel = q.subcategory === 'RC' ? 'RC Reading' : 'CR Logic';
+  const diffLabel = q.difficulty_label || ({'2':'Easy','3':'Medium','4':'Hard'}[q.difficulty] || 'Medium');
   html += `<div class="question-meta">
     <span class="tag tag-type">${typeLabel}</span>`;
   (q.skill_tags || []).forEach(t => { html += `<span class="tag tag-skill">${t}</span>`; });
-  html += `<span class="tag tag-diff">${'★'.repeat(q.difficulty || 3)}</span></div>`;
+  html += `<span class="tag tag-diff">${diffLabel} ${'★'.repeat(q.difficulty || 3)}</span></div>`;
 
-  // Question content
-  html += `<div class="question-content">${escapeHtml(q.content)}</div>`;
+  // Question content - handle RC passage separately
+  if (q.subcategory === 'RC' && q.question_stem) {
+    // Use stimulus field (actual passage) if available, else extract from content
+    const passageText = q.stimulus
+      || (q.content.includes(q.question_stem)
+        ? q.content.substring(0, q.content.indexOf(q.question_stem)).trim()
+        : '');
+    const passageKey = q.passage_id ? 'p_' + q.passage_id : passageText.substring(0, 100);
+
+    // Check if this is the same passage as the previous question
+    const prevIdx = AppState.currentQuestionIdx - 1;
+    let samePassage = false;
+    if (prevIdx >= 0) {
+      const prevQ = AppState.currentPlan.questions[prevIdx];
+      if (prevQ.subcategory === 'RC' && prevQ.question_stem) {
+        const prevKey = prevQ.passage_id ? 'p_' + prevQ.passage_id
+          : (prevQ.stimulus || prevQ.content.substring(0, prevQ.content.indexOf(prevQ.question_stem) >= 0 ? prevQ.content.indexOf(prevQ.question_stem) : 100).trim()).substring(0, 100);
+        samePassage = prevKey === passageKey;
+      }
+    }
+
+    // Count how many questions share this passage in the current plan
+    let passageQNum = 1;
+    let passageQTotal = 0;
+    for (const pq of AppState.currentPlan.questions) {
+      if (pq.subcategory === 'RC' && pq.question_stem) {
+        const pKey = pq.passage_id ? 'p_' + pq.passage_id
+          : (pq.stimulus || '').substring(0, 100) || pq.content.substring(0, 100);
+        if (pKey === passageKey) {
+          passageQTotal++;
+          if (pq === q) passageQNum = passageQTotal;
+        }
+      }
+    }
+
+    if (passageText) {
+      const collapseLabel = samePassage ? '📖 Passage (same as above)' : '📖 Passage';
+      html += `<div class="rc-passage${samePassage ? ' rc-passage-collapsed' : ''}">
+        <div class="rc-passage-header" onclick="this.parentElement.classList.toggle('rc-passage-collapsed')">${collapseLabel}</div>
+        <div class="rc-passage-body">${escapeHtml(passageText)}</div>
+      </div>`;
+    }
+
+    const qLabel = passageQTotal > 1 ? ` (Question ${passageQNum}/${passageQTotal} for this passage)` : '';
+    html += `<div class="question-stem">${escapeHtml(q.question_stem)}${qLabel}</div>`;
+  } else {
+    html += `<div class="question-content">${escapeHtml(q.content)}</div>`;
+  }
 
   if (!AppState.showResult) {
     // Show options
@@ -555,9 +617,45 @@ async function renderPractice() {
   }
 
   container.innerHTML = html;
+
+  // Start/update question timer
+  if (!AppState.showResult) {
+    startQuestionTimer();
+  }
+}
+
+function startQuestionTimer() {
+  clearInterval(AppState.timerInterval);
+  AppState.timerInterval = setInterval(() => {
+    if (!AppState.questionStartTime) return;
+    const elapsed = Math.floor((Date.now() - AppState.questionStartTime) / 1000);
+    const timerEl = document.getElementById('q-timer');
+    const paceEl = document.getElementById('q-pace');
+    if (!timerEl) { clearInterval(AppState.timerInterval); return; }
+
+    const min = Math.floor(elapsed / 60);
+    const sec = elapsed % 60;
+    timerEl.textContent = `${min}:${sec.toString().padStart(2, '0')}`;
+
+    // GMAT pacing: ~2 min/question target
+    const TARGET_SECONDS = 120;
+    if (paceEl) {
+      if (elapsed <= TARGET_SECONDS) {
+        paceEl.className = 'timer-pace on-pace';
+        paceEl.textContent = `On pace`;
+      } else if (elapsed <= TARGET_SECONDS * 1.5) {
+        paceEl.className = 'timer-pace behind';
+        paceEl.textContent = `Slow`;
+      } else {
+        paceEl.className = 'timer-pace over';
+        paceEl.textContent = `Over time`;
+      }
+    }
+  }, 1000);
 }
 
 function submitAnswer(answerIdx) {
+  clearInterval(AppState.timerInterval);
   const q = AppState.currentPlan.questions[AppState.currentQuestionIdx];
   const timeTaken = Math.round((Date.now() - AppState.questionStartTime) / 1000);
   const isCorrect = answerIdx === q.correct_answer;

@@ -115,32 +115,66 @@ class Scheduler:
         
         selected_questions = []
         selected_ids = set()
-
-        # Get all attempted question IDs to exclude them
         attempted_ids = self._get_attempted_ids()
 
-        # Split into unseen and seen questions
-        unseen_questions = [q for q in all_questions if q.id not in attempted_ids]
-        seen_questions = [q for q in all_questions if q.id in attempted_ids]
+        # Separate RC and non-RC
+        rc_questions = [q for q in all_questions if q.subcategory == 'RC']
+        non_rc_questions = [q for q in all_questions if q.subcategory != 'RC']
 
-        if len(unseen_questions) >= target_count:
-            # Enough unseen questions: use only unseen, weighted by weakness
-            selected_questions = self._weighted_sample(
-                unseen_questions, weaknesses, target_count, selected_ids
-            )
+        if rc_questions and not non_rc_questions:
+            # Pure RC mode: select by passage groups
+            selected_questions = self._select_rc_by_passage(rc_questions, target_count, attempted_ids)
+        elif rc_questions:
+            # Mixed mode: non-RC individually, then RC passage groups
+            unseen_non_rc = [q for q in non_rc_questions if q.id not in attempted_ids]
+            seen_non_rc = [q for q in non_rc_questions if q.id in attempted_ids]
+            non_rc_count = min(target_count, len(non_rc_questions))
+
+            if len(unseen_non_rc) >= non_rc_count:
+                selected_questions = self._weighted_sample(unseen_non_rc, weaknesses, non_rc_count, selected_ids)
+            else:
+                selected_questions = list(unseen_non_rc)
+                selected_ids.update(q.id for q in selected_questions)
+                remaining = non_rc_count - len(selected_questions)
+                if remaining > 0:
+                    selected_questions.extend(self._weighted_sample(seen_non_rc, weaknesses, remaining, selected_ids))
+
+            rc_remaining = target_count - len(selected_questions)
+            if rc_remaining > 0:
+                selected_questions.extend(self._select_rc_by_passage(rc_questions, rc_remaining, attempted_ids))
         else:
-            # Not enough unseen: use all unseen + fill from seen (incorrect ones have higher weight)
-            selected_questions = list(unseen_questions)
-            selected_ids.update(q.id for q in selected_questions)
+            # No RC: original logic with keep-alive quota
+            unseen = [q for q in all_questions if q.id not in attempted_ids]
+            seen = [q for q in all_questions if q.id in attempted_ids]
 
-            remaining = target_count - len(selected_questions)
-            if remaining > 0:
-                fill = self._weighted_sample(
-                    seen_questions, weaknesses, remaining, selected_ids
-                )
-                selected_questions.extend(fill)
-        
-        # Step 4: Shuffle to avoid clustering, but respect max consecutive rule
+            # Keep-alive: reserve a portion for mastered tags (weight < 1.0) to prevent forgetting
+            mastered_tags = [tag for tag, w in weaknesses.items()
+                            if w.weight < 1.0 and w.total_attempts >= 3]
+            keep_alive_questions = []
+            if mastered_tags and unseen:
+                keep_alive_count = max(1, int(target_count * self.config.keep_alive_quota))
+                keep_alive_candidates = [q for q in unseen
+                                         if q.skill_tags and any(t in mastered_tags for t in q.skill_tags)]
+                if keep_alive_candidates:
+                    keep_alive_questions = random.sample(
+                        keep_alive_candidates, min(keep_alive_count, len(keep_alive_candidates)))
+                    selected_ids.update(q.id for q in keep_alive_questions)
+
+            main_count = target_count - len(keep_alive_questions)
+            main_unseen = [q for q in unseen if q.id not in selected_ids]
+
+            if len(main_unseen) >= main_count:
+                selected_questions = keep_alive_questions + self._weighted_sample(
+                    main_unseen, weaknesses, main_count, selected_ids)
+            else:
+                selected_questions = keep_alive_questions + list(main_unseen)
+                selected_ids.update(q.id for q in main_unseen)
+                remaining = main_count - len(main_unseen)
+                if remaining > 0:
+                    selected_questions.extend(self._weighted_sample(
+                        seen, weaknesses, remaining, selected_ids))
+
+        # Shuffle but keep RC passage groups together
         selected_questions = self._shuffle_with_constraints(selected_questions)
         
         # Identify focus tags (top 3 by weight)
@@ -156,6 +190,45 @@ class Scheduler:
             created_at=datetime.now().isoformat()
         )
     
+    @staticmethod
+    def _get_passage_key(question) -> Optional[str]:
+        """Extract a passage key from an RC question's content."""
+        if question.subcategory != 'RC':
+            return None
+        # Use passage_id if available (generated from stimulus during import)
+        if hasattr(question, 'passage_id') and question.passage_id:
+            return f'p_{question.passage_id}'
+        # Use stimulus field (actual passage text) for grouping
+        if hasattr(question, 'stimulus') and question.stimulus:
+            return question.stimulus.strip()[:200]
+        # Last resort: extract from content by finding question_stem
+        if hasattr(question, 'question_stem') and question.question_stem and question.content:
+            idx = question.content.find(question.question_stem)
+            if idx > 0:
+                return question.content[:idx].strip()[:100]
+        return question.content[:100] if question.content else None
+
+    def _select_rc_by_passage(self, rc_questions: List[Question], target_count: int, attempted_ids: set) -> List[Question]:
+        """Select RC questions grouped by passage. Prefer passages with unseen questions."""
+        # Group by passage
+        passage_groups: Dict[str, List[Question]] = {}
+        for q in rc_questions:
+            key = self._get_passage_key(q) or str(q.id)
+            if key not in passage_groups:
+                passage_groups[key] = []
+            passage_groups[key].append(q)
+
+        # Separate into passages with unseen vs all-seen
+        unseen_passages = [g for g in passage_groups.values() if any(q.id not in attempted_ids for q in g)]
+        seen_passages = [g for g in passage_groups.values() if all(q.id in attempted_ids for q in g)]
+
+        selected = []
+        for group in unseen_passages + seen_passages:
+            if len(selected) >= target_count:
+                break
+            selected.extend(group)
+        return selected
+
     def _get_attempted_ids(self) -> set:
         """Get IDs of all questions that have been attempted."""
         all_logs = self.db.get_study_logs(limit=10000)
@@ -175,11 +248,23 @@ class Scheduler:
         weights = []
         for q in available:
             # Use max weight among question's tags
-            q_weight = max(
+            tag_weight = max(
                 (weaknesses[tag].weight if tag in weaknesses else 1.0)
                 for tag in q.skill_tags
             ) if q.skill_tags else 1.0
-            weights.append(q_weight)
+
+            # Difficulty adjustment (GMAT adaptive simulation):
+            # - Weak tags (weight > 1.5): prefer easier questions to build foundations
+            # - Strong tags (weight < 1.0): prefer harder questions for growth
+            diff = getattr(q, 'difficulty', 3) or 3
+            if tag_weight > 1.5:
+                diff_boost = 1.3 if diff == 2 else (1.0 if diff == 3 else 0.7)
+            elif tag_weight < 1.0:
+                diff_boost = 1.3 if diff == 4 else (1.0 if diff == 3 else 0.7)
+            else:
+                diff_boost = 1.0
+
+            weights.append(tag_weight * diff_boost)
         
         # Normalize weights
         total_weight = sum(weights)

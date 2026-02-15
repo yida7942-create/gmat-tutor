@@ -143,17 +143,36 @@ class Scheduler:
             if rc_remaining > 0:
                 selected_questions.extend(self._select_rc_by_passage(rc_questions, rc_remaining, attempted_ids))
         else:
-            # No RC: original logic
+            # No RC: original logic with keep-alive quota
             unseen = [q for q in all_questions if q.id not in attempted_ids]
             seen = [q for q in all_questions if q.id in attempted_ids]
-            if len(unseen) >= target_count:
-                selected_questions = self._weighted_sample(unseen, weaknesses, target_count, selected_ids)
+
+            # Keep-alive: reserve a portion for mastered tags (weight < 1.0) to prevent forgetting
+            mastered_tags = [tag for tag, w in weaknesses.items()
+                            if w.weight < 1.0 and w.total_attempts >= 3]
+            keep_alive_questions = []
+            if mastered_tags and unseen:
+                keep_alive_count = max(1, int(target_count * self.config.keep_alive_quota))
+                keep_alive_candidates = [q for q in unseen
+                                         if q.skill_tags and any(t in mastered_tags for t in q.skill_tags)]
+                if keep_alive_candidates:
+                    keep_alive_questions = random.sample(
+                        keep_alive_candidates, min(keep_alive_count, len(keep_alive_candidates)))
+                    selected_ids.update(q.id for q in keep_alive_questions)
+
+            main_count = target_count - len(keep_alive_questions)
+            main_unseen = [q for q in unseen if q.id not in selected_ids]
+
+            if len(main_unseen) >= main_count:
+                selected_questions = keep_alive_questions + self._weighted_sample(
+                    main_unseen, weaknesses, main_count, selected_ids)
             else:
-                selected_questions = list(unseen)
-                selected_ids.update(q.id for q in selected_questions)
-                remaining = target_count - len(selected_questions)
+                selected_questions = keep_alive_questions + list(main_unseen)
+                selected_ids.update(q.id for q in main_unseen)
+                remaining = main_count - len(main_unseen)
                 if remaining > 0:
-                    selected_questions.extend(self._weighted_sample(seen, weaknesses, remaining, selected_ids))
+                    selected_questions.extend(self._weighted_sample(
+                        seen, weaknesses, remaining, selected_ids))
 
         # Shuffle but keep RC passage groups together
         selected_questions = self._shuffle_with_constraints(selected_questions)
@@ -176,8 +195,17 @@ class Scheduler:
         """Extract a passage key from an RC question's content."""
         if question.subcategory != 'RC':
             return None
-        # The content contains passage + question stem
-        # We use first 100 chars of the passage as a grouping key
+        # Use passage_id if available (generated from stimulus during import)
+        if hasattr(question, 'passage_id') and question.passage_id:
+            return f'p_{question.passage_id}'
+        # Use stimulus field (actual passage text) for grouping
+        if hasattr(question, 'stimulus') and question.stimulus:
+            return question.stimulus.strip()[:200]
+        # Last resort: extract from content by finding question_stem
+        if hasattr(question, 'question_stem') and question.question_stem and question.content:
+            idx = question.content.find(question.question_stem)
+            if idx > 0:
+                return question.content[:idx].strip()[:100]
         return question.content[:100] if question.content else None
 
     def _select_rc_by_passage(self, rc_questions: List[Question], target_count: int, attempted_ids: set) -> List[Question]:
@@ -220,11 +248,23 @@ class Scheduler:
         weights = []
         for q in available:
             # Use max weight among question's tags
-            q_weight = max(
+            tag_weight = max(
                 (weaknesses[tag].weight if tag in weaknesses else 1.0)
                 for tag in q.skill_tags
             ) if q.skill_tags else 1.0
-            weights.append(q_weight)
+
+            # Difficulty adjustment (GMAT adaptive simulation):
+            # - Weak tags (weight > 1.5): prefer easier questions to build foundations
+            # - Strong tags (weight < 1.0): prefer harder questions for growth
+            diff = getattr(q, 'difficulty', 3) or 3
+            if tag_weight > 1.5:
+                diff_boost = 1.3 if diff == 2 else (1.0 if diff == 3 else 0.7)
+            elif tag_weight < 1.0:
+                diff_boost = 1.3 if diff == 4 else (1.0 if diff == 3 else 0.7)
+            else:
+                diff_boost = 1.0
+
+            weights.append(tag_weight * diff_boost)
         
         # Normalize weights
         total_weight = sum(weights)

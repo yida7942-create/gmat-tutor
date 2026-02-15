@@ -380,6 +380,33 @@ body {
   padding: 10px 0;
 }
 
+/* ============== Question Timer ============== */
+
+.question-timer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  margin-bottom: 10px;
+  background: var(--card-bg);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+}
+
+.timer-elapsed {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.timer-pace {
+  color: var(--text-secondary);
+}
+
+.timer-pace.on-pace { color: var(--success); }
+.timer-pace.behind { color: var(--warning); }
+.timer-pace.over { color: var(--danger); }
+
 /* ============== Result ============== */
 
 .result-banner {

@@ -75,16 +75,36 @@ class Scheduler {
         selected = selected.concat(rcSelected);
       }
     } else {
-      // No RC: original logic
+      // No RC: original logic with keep-alive quota
       const unseen = allQuestions.filter(q => !attemptedIds.has(q.id));
       const seen = allQuestions.filter(q => attemptedIds.has(q.id));
 
-      if (unseen.length >= targetCount) {
-        selected = this._weightedSample(unseen, weaknesses, targetCount, selectedIds);
+      // Keep-alive: reserve a portion for mastered tags (weight < 1.0) to prevent forgetting
+      const masteredTags = Object.entries(weaknesses)
+        .filter(([, w]) => w.weight < 1.0 && w.total_attempts >= 3)
+        .map(([tag]) => tag);
+
+      let keepAliveQuestions = [];
+      if (masteredTags.length > 0 && unseen.length > 0) {
+        const keepAliveCount = Math.max(1, Math.floor(targetCount * this.config.keepAliveQuota));
+        const keepAliveCandidates = unseen.filter(q =>
+          q.skill_tags && q.skill_tags.some(t => masteredTags.includes(t))
+        );
+        if (keepAliveCandidates.length > 0) {
+          keepAliveQuestions = this._randomSample(keepAliveCandidates, Math.min(keepAliveCount, keepAliveCandidates.length));
+          keepAliveQuestions.forEach(q => selectedIds.add(q.id));
+        }
+      }
+
+      const mainCount = targetCount - keepAliveQuestions.length;
+      const mainUnseen = unseen.filter(q => !selectedIds.has(q.id));
+
+      if (mainUnseen.length >= mainCount) {
+        selected = keepAliveQuestions.concat(this._weightedSample(mainUnseen, weaknesses, mainCount, selectedIds));
       } else {
-        selected = selected.concat(unseen);
-        unseen.forEach(q => selectedIds.add(q.id));
-        const remaining = targetCount - selected.length;
+        selected = keepAliveQuestions.concat(mainUnseen);
+        mainUnseen.forEach(q => selectedIds.add(q.id));
+        const remaining = mainCount - mainUnseen.length;
         if (remaining > 0) {
           selected = selected.concat(this._weightedSample(seen, weaknesses, remaining, selectedIds));
         }
@@ -106,6 +126,11 @@ class Scheduler {
 
   _getPassageKey(question) {
     if (question.subcategory !== 'RC') return null;
+    // Use passage_id (generated from stimulus during import) for reliable grouping
+    if (question.passage_id) return 'p_' + question.passage_id;
+    // Fallback: use stimulus field (the actual passage text)
+    if (question.stimulus) return question.stimulus.trim().substring(0, 200);
+    // Last resort: extract from content
     const stem = question.question_stem || '';
     const content = question.content || '';
     if (stem && content.includes(stem)) {
@@ -212,8 +237,27 @@ class Scheduler {
     if (!available.length) return [];
 
     const weights = available.map(q => {
-      if (!q.skill_tags || !q.skill_tags.length) return 1.0;
-      return Math.max(...q.skill_tags.map(t => (weaknesses[t] ? weaknesses[t].weight : 1.0)));
+      // Base weight from weakness tags
+      let tagWeight = 1.0;
+      if (q.skill_tags && q.skill_tags.length) {
+        tagWeight = Math.max(...q.skill_tags.map(t => (weaknesses[t] ? weaknesses[t].weight : 1.0)));
+      }
+
+      // Difficulty adjustment (GMAT adaptive simulation):
+      // - Weak tags (weight > 1.5): prefer easier questions (difficulty 2) to build foundations
+      // - Strong tags (weight < 1.0): prefer harder questions (difficulty 4) to push growth
+      // - Moderate: prefer medium difficulty
+      const diff = q.difficulty || 3;
+      let diffBoost = 1.0;
+      if (tagWeight > 1.5) {
+        // Weak: boost easy questions
+        diffBoost = diff === 2 ? 1.3 : diff === 3 ? 1.0 : 0.7;
+      } else if (tagWeight < 1.0) {
+        // Strong: boost hard questions
+        diffBoost = diff === 4 ? 1.3 : diff === 3 ? 1.0 : 0.7;
+      }
+
+      return tagWeight * diffBoost;
     });
 
     const totalWeight = weights.reduce((s, w) => s + w, 0) || available.length;
